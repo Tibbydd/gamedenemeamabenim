@@ -134,7 +134,7 @@ func spawn_duplicate() -> void:
 	print("Looper spawning duplicate")
 	
 	# Create duplicate looper
-	var duplicate = preload("res://scripts/enemies/Looper.gd").new()
+	var duplicate = Looper.new()
 	duplicate.global_position = global_position + Vector2(randf_range(-50, 50), randf_range(-50, 50))
 	duplicate.emotion_type = emotion_type
 	duplicate.max_health = max_health * 0.7  # Weaker duplicate

@@ -50,6 +50,10 @@ func _ready() -> void:
 	# Set initial position
 	target_position = global_position
 	
+	# Setup collision layers
+	collision_layer = 1  # Player layer
+	collision_mask = 8   # Can collide with environment (walls)
+	
 	# Connect touch signals
 	touch_area.input_event.connect(_on_touch_area_input)
 	
@@ -77,6 +81,13 @@ func _process(delta: float) -> void:
 	
 	# Update status effects
 	update_status_effects(delta)
+	
+	# Check for interactions with environment
+	check_interactions()
+	
+	# Update GameManager with current stats
+	GameManager.player_health = health
+	GameManager.cursor_energy = energy
 	
 	# Save state for rewind system
 	save_state_snapshot()
@@ -140,11 +151,11 @@ func set_target_position(world_pos: Vector2) -> void:
 		print("Moving to: ", world_pos)
 
 func is_position_walkable(pos: Vector2) -> bool:
-	# Check collision with walls using tilemap
+	# Check collision with walls using physics
 	var space_state = get_world_2d().direct_space_state
 	var query = PhysicsPointQueryParameters2D.new()
 	query.position = pos
-	query.collision_mask = 4  # Environment layer (walls)
+	query.collision_mask = 8  # Environment layer (walls)
 	query.exclude = [self]
 	
 	var result = space_state.intersect_point(query)
@@ -177,9 +188,11 @@ func handle_movement(delta: float) -> void:
 	if get_slide_collision_count() > 0:
 		for i in get_slide_collision_count():
 			var collision = get_slide_collision(i)
-			if collision.get_collider().is_in_group("walls"):
+			var collider = collision.get_collider()
+			if collider and collider.is_in_group("walls"):
 				is_moving = false
 				target_position = global_position
+				break
 
 func update_digital_trail(delta: float) -> void:
 	trail_update_timer += delta
@@ -389,3 +402,94 @@ func get_state_for_rewind() -> Dictionary:
 		"health": health,
 		"timestamp": Time.get_ticks_msec()
 	}
+
+func take_damage(amount: float, damage_type: String = "corruption") -> void:
+	# Apply damage to player
+	health -= amount
+	health = max(0, health)
+	
+	print("Player took ", amount, " damage from ", damage_type)
+	
+	# Update GameManager
+	GameManager.player_health = health
+	
+	# Create damage effect
+	create_digital_effect("DAMAGE: -" + str(amount), Color.RED)
+	
+	# Screen flash on damage
+	if get_viewport():
+		EffectsManager.create_screen_flash(Color.RED, 0.2)
+	
+	# Check if player died
+	if health <= 0:
+		die()
+
+func heal(amount: float) -> void:
+	# Heal player
+	health += amount
+	health = min(max_health, health)
+	
+	print("Player healed for ", amount)
+	
+	# Update GameManager
+	GameManager.player_health = health
+	
+	# Create heal effect
+	create_digital_effect("HEAL: +" + str(amount), Color.GREEN)
+
+func restore_energy(amount: float) -> void:
+	# Restore energy
+	energy += amount
+	energy = min(max_energy, energy)
+	
+	print("Player restored ", amount, " energy")
+	
+	# Update GameManager
+	GameManager.cursor_energy = energy
+	
+	# Create energy effect
+	create_digital_effect("ENERGY: +" + str(amount), Color.CYAN)
+
+func die() -> void:
+	print("Player died!")
+	
+	# Stop movement
+	is_moving = false
+	
+	# Create death effect
+	create_digital_effect("CONNECTION LOST", Color.RED)
+	EffectsManager.create_screen_flash(Color.RED, 1.0)
+	
+	# Disable input
+	set_process_input(false)
+	set_physics_process(false)
+
+func check_interactions() -> void:
+	# Check for nearby memory fragments and enemies
+	var nearby_bodies = touch_area.get_overlapping_bodies()
+	var nearby_areas = touch_area.get_overlapping_areas()
+	
+	for body in nearby_bodies:
+		if body.is_in_group("memory_fragments"):
+			collect_memory_fragment(body)
+		elif body.is_in_group("enemies"):
+			# Handle enemy collision (damage over time to prevent instant kill)
+			if body.has_method("get_collision_damage"):
+				var damage = body.get_collision_damage() * get_physics_process_delta_time()
+				take_damage(damage, "enemy_contact")
+	
+	for area in nearby_areas:
+		if area.is_in_group("memory_fragments"):
+			collect_memory_fragment(area)
+		elif area.is_in_group("corruption_zones"):
+			# Handle corruption damage
+			take_damage(10.0 * get_physics_process_delta_time(), "corruption")
+
+func collect_memory_fragment(fragment) -> void:
+	# Collect a memory fragment
+	if fragment.has_method("collect"):
+		var fragment_data = fragment.collect()
+		if fragment_data:
+			GameManager.memory_fragments_collected += 1
+			create_digital_effect("FRAGMENT COLLECTED", Color.YELLOW)
+			print("Memory fragment collected: ", fragment_data)

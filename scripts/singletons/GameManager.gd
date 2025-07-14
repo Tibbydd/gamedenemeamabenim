@@ -178,6 +178,37 @@ func save_game_data() -> void:
 		file.store_string(JSON.stringify(save_data))
 		file.close()
 
+func get_current_session_stats() -> Dictionary:
+	# Return current session statistics for game over screen
+	return {
+		"level": current_level,
+		"fragments_collected": memory_fragments_collected,
+		"total_fragments": total_fragments_in_level,
+		"play_time": time_in_current_level,
+		"enemies_defeated": enemies_defeated,
+		"victory": memory_fragments_collected >= total_fragments_in_level,
+		"has_memories": memory_fragments_collected > 0
+	}
+
+func reset_current_session() -> void:
+	# Reset session statistics for new game
+	time_in_current_level = 0.0
+	enemies_defeated = 0
+	memory_fragments_collected = 0
+	cursor_energy = max_cursor_energy
+	player_health = max_player_health
+	current_state = GameState.PLAYING
+
+func record_ethical_choice(choice: String) -> void:
+	# Record an ethical choice made by the player
+	print("Ethical choice recorded: ", choice)
+	# This could be saved for long-term progression
+
+func trigger_game_over(victory: bool = false) -> void:
+	# Trigger game over state
+	current_state = GameState.GAME_OVER
+	print("Game over triggered. Victory: ", victory)
+
 func load_game_data() -> void:
 	if FileAccess.file_exists(save_file_path):
 		var file = FileAccess.open(save_file_path, FileAccess.READ)

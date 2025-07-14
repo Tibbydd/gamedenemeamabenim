@@ -375,3 +375,79 @@ func get_fragment_by_id(fragment_id: String) -> MemoryFragment:
 func reset_collection() -> void:
 	collected_fragments.clear()
 	current_mind = null
+
+func get_reconstructed_memory_summary() -> Dictionary:
+	# Get summary of reconstructed memories for ethical choices
+	if collected_fragments.is_empty():
+		return {
+			"owner_name": "Bilinmeyen Kişi",
+			"age": "Belirsiz",
+			"profession": "Bilinmeyen",
+			"dominant_emotion": "neutral"
+		}
+	
+	# Analyze collected fragments to create summary
+	var professions = {}
+	var emotions = {}
+	var ages = []
+	
+	for fragment in collected_fragments:
+		var memory_data = fragment.content_preview
+		# Extract info from memory text (simple keyword matching)
+		if "doktor" in memory_data or "hastane" in memory_data:
+			professions["doctor"] = professions.get("doctor", 0) + 1
+		elif "öğretmen" in memory_data or "okul" in memory_data:
+			professions["teacher"] = professions.get("teacher", 0) + 1
+		elif "mühendis" in memory_data or "inşaat" in memory_data:
+			professions["engineer"] = professions.get("engineer", 0) + 1
+		elif "sanat" in memory_data or "müzik" in memory_data:
+			professions["artist"] = professions.get("artist", 0) + 1
+		else:
+			professions["worker"] = professions.get("worker", 0) + 1
+		
+		# Emotion analysis from fragment type
+		emotions[fragment.emotion_resonance] = emotions.get(fragment.emotion_resonance, 0) + 1
+		ages.append(randi_range(40, 80))  # Estimate age from content
+	
+	# Find most common profession and emotion
+	var dominant_profession = "worker"
+	var max_prof_count = 0
+	for prof in professions:
+		if professions[prof] > max_prof_count:
+			max_prof_count = professions[prof]
+			dominant_profession = prof
+	
+	var dominant_emotion = "neutral"
+	var max_emotion_count = 0
+	for emotion in emotions:
+		if emotions[emotion] > max_emotion_count:
+			max_emotion_count = emotions[emotion]
+			dominant_emotion = emotion
+	
+	# Calculate average age
+	var avg_age = 50
+	if ages.size() > 0:
+		var total = 0
+		for age in ages:
+			total += age
+		avg_age = total / ages.size()
+	
+	# Generate name based on profession and emotion
+	var names = {
+		"doctor": ["Dr. Mehmet Yılmaz", "Dr. Ayşe Demir", "Dr. Mustafa Kaya"],
+		"teacher": ["Öğretmen Fatma", "Hocam Ali", "Müdür Zeynep"],
+		"engineer": ["Mühendis Ahmet", "İnşaatçı Hasan", "Tekniker Sevim"],
+		"artist": ["Sanatçı Leyla", "Ressam Kemal", "Müzisyen Deniz"],
+		"worker": ["İşçi Osman", "Usta Veli", "Tamirci Hacer"]
+	}
+	
+	var name_list = names.get(dominant_profession, ["Bilinmeyen Kişi"])
+	var selected_name = name_list[randi() % name_list.size()]
+	
+	return {
+		"owner_name": selected_name,
+		"age": str(avg_age),
+		"profession": dominant_profession,
+		"dominant_emotion": dominant_emotion,
+		"fragments_count": collected_fragments.size()
+	}

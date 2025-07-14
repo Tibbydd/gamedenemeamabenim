@@ -70,6 +70,15 @@ var dungeon_size: Vector2i = Vector2i(64, 64)
 func generate_dungeon(seed_string: String, mind_profile: Dictionary) -> void:
 	print("Generating dungeon with seed: ", seed_string)
 	
+	# Validate input
+	if seed_string.is_empty():
+		seed_string = str(randi_range(100000, 999999))
+		print("Empty seed provided, using random: ", seed_string)
+	
+	if mind_profile.is_empty():
+		print("Empty mind profile provided, creating default")
+		mind_profile = create_default_mind_profile()
+	
 	# Set random seed
 	seed(hash(seed_string))
 	
@@ -90,6 +99,18 @@ func generate_dungeon(seed_string: String, mind_profile: Dictionary) -> void:
 	
 	# Notify that generation is complete
 	dungeon_generated.emit()
+
+func create_default_mind_profile() -> Dictionary:
+	# Create a safe default mind profile
+	return {
+		"primary_emotion": "neutral",
+		"corruption_level": 0.5,
+		"memory_density": 15,
+		"hostile_fragments": 3,
+		"age_of_death": 50,
+		"profession": "unknown",
+		"dominant_color": Color.GRAY
+	}
 
 func generate_rooms() -> void:
 	var room_count = get_room_count_for_emotion(current_dungeon.mind_profile.primary_emotion)

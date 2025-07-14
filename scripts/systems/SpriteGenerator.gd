@@ -1,4 +1,5 @@
 extends Node
+class_name SpriteGenerator
 
 # Procedural sprite generation system for CURSOR: Fragments of the Forgotten
 # Creates pixel art sprites dynamically

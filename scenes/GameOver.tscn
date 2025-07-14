@@ -1,0 +1,152 @@
+[gd_scene load_steps=2 format=3 uid="uid://b8kf5mg3hy1u4"]
+
+[ext_resource type="Script" path="res://scripts/ui/GameOver.gd" id="1_s8m3k"]
+
+[node name="GameOver" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_s8m3k")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.05, 0.05, 0.15, 0.95)
+
+[node name="BackgroundEffects" type="Node2D" parent="."]
+
+[node name="MainContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -250.0
+offset_right = 300.0
+offset_bottom = 250.0
+
+[node name="StatusLabel" type="Label" parent="MainContainer"]
+layout_mode = 2
+text = "NEURAL CONNECTION SEVERED"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Spacer1" type="Control" parent="MainContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 30)
+
+[node name="ResultsContainer" type="VBoxContainer" parent="MainContainer"]
+layout_mode = 2
+
+[node name="LevelLabel" type="Label" parent="MainContainer/ResultsContainer"]
+layout_mode = 2
+text = "LEVEL: 1"
+horizontal_alignment = 1
+
+[node name="FragmentsLabel" type="Label" parent="MainContainer/ResultsContainer"]
+layout_mode = 2
+text = "FRAGMENTS COLLECTED: 0/10"
+horizontal_alignment = 1
+
+[node name="TimeLabel" type="Label" parent="MainContainer/ResultsContainer"]
+layout_mode = 2
+text = "TIME IN MIND: 00:00"
+horizontal_alignment = 1
+
+[node name="EnemiesLabel" type="Label" parent="MainContainer/ResultsContainer"]
+layout_mode = 2
+text = "ENEMIES DEFEATED: 0"
+horizontal_alignment = 1
+
+[node name="Spacer2" type="Control" parent="MainContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 30)
+
+[node name="MessageLabel" type="RichTextLabel" parent="MainContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 100)
+bbcode_enabled = true
+text = "[center][color=cyan]The mind has been cleansed.[/color]
+[color=gray]Fragments of memory have been preserved
+for future generations to learn from.[/color][/center]"
+fit_content = true
+
+[node name="Spacer3" type="Control" parent="MainContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 30)
+
+[node name="ButtonContainer" type="HBoxContainer" parent="MainContainer"]
+layout_mode = 2
+
+[node name="RestartButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+text = "DIVE AGAIN"
+
+[node name="Spacer4" type="Control" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(20, 0)
+
+[node name="MenuButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+text = "RETURN TO SURFACE"
+
+[node name="EthicalChoicePanel" type="Panel" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -350.0
+offset_top = -200.0
+offset_right = 350.0
+offset_bottom = 200.0
+
+[node name="EthicalContainer" type="VBoxContainer" parent="EthicalChoicePanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -20.0
+
+[node name="EthicalTitle" type="Label" parent="EthicalChoicePanel/EthicalContainer"]
+layout_mode = 2
+text = "ETHICAL DECISION REQUIRED"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="EthicalChoicePanel/EthicalContainer"]
+layout_mode = 2
+
+[node name="DilemmaLabel" type="RichTextLabel" parent="EthicalChoicePanel/EthicalContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 100)
+bbcode_enabled = true
+text = "[center]Memory reconstruction complete.
+What should be done with these memories?[/center]"
+fit_content = true
+
+[node name="ChoiceContainer" type="HBoxContainer" parent="EthicalChoicePanel/EthicalContainer"]
+layout_mode = 2
+
+[node name="ChoiceAButton" type="Button" parent="EthicalChoicePanel/EthicalContainer/ChoiceContainer"]
+layout_mode = 2
+text = "PRESERVE
+(Share with world)"
+
+[node name="Spacer" type="Control" parent="EthicalChoicePanel/EthicalContainer/ChoiceContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(20, 0)
+
+[node name="ChoiceBButton" type="Button" parent="EthicalChoicePanel/EthicalContainer/ChoiceContainer"]
+layout_mode = 2
+text = "PURGE
+(Grant peace)"

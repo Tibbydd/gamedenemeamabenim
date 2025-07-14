@@ -1,148 +1,176 @@
 # CURSOR: Fragments of the Forgotten
 
-**Cursor: Fragments of the Forgotten**, Android cihazlar için geliştirilen, izometrik görünümlü, stilize piksel art grafiklere sahip, randomly generated dungeon crawler türünde bir aksiyon-macera oyunudur.
+**An isometric pixel-art dungeon crawler for Android where players hack into digital minds of forgotten civilizations.**
 
-## 🎮 Oyun Konsepti
+## 🎮 Game Overview
 
-Gelecekte, insan zihni dijitalleştirilebilmektedir. Ancak ölen insanların zihinsel verileri Fragment Vaults adı verilen sanal yapılarda kilitli kalır. Oyuncu bir "Cursor"dur — bu sanal yapılara girerek bozulmuş zihinleri temizleyen bir zihin hacker'ı. Her zindan, bir bireyin zihinsel harabelerinden oluşur.
+In CURSOR: Fragments of the Forgotten, players take on the role of "Cursor" hackers who enter the digital minds of deceased individuals to clean corrupted mental data and recover lost memories. Navigate through procedurally generated dungeons that reflect the emotional states of forgotten souls.
 
-## ✨ Temel Özellikler
+### 🚀 Key Features
 
-### 🌀 Procedural Dungeon Generation
-- Her zindan, bir bireyin zihinsel profiline göre AI destekli olarak rastgele oluşturulur
-- Duygusal temalar: "Pişmanlık Katı", "Öfke Arenası", "Unutulmuş Oda"
-- Her duygu türü farklı zindan yapısı ve zorluk seviyesi oluşturur
+- **🧠 Mind-Based Dungeons**: Explore procedurally generated levels based on emotional profiles (regret, anger, melancholy, fear, joy, trauma)
+- **🔧 Cursor Hacking Tools**: 
+  - **Time Rewind (CTRL-Z)**: Restore previous state
+  - **Code Injection**: Boost abilities and bypass defenses  
+  - **Memory Scan**: Reveal hidden fragments and secrets
+- **🧩 Memory Puzzle System**: Collect and reconstruct fragmented memories with ethical decision-making
+- **📱 Touch-Optimized Controls**: Drag-to-move interface designed for mobile devices
+- **🎨 Dynamic Visual Effects**: Cyberpunk aesthetics with procedural sprite generation
+- **🤖 Advanced AI Enemies**: Three unique enemy types with sophisticated behaviors
+- **🌈 Emotional Theming**: Environment colors, music, and atmosphere adapt to psychological states
 
-### 🧠 Cursor Tool Sistemi
-- **CTRL-Z (Time Rewind)**: Ölümden birkaç saniye öncesine dönme
-- **Code Injection**: Düşman davranışlarını değiştirme
-- **Data Leak**: Gizli yollar ve anıları açığa çıkarma
-- **Memory Scan**: Yakındaki hafıza parçalarını tespit etme
+## 🏗️ Technical Architecture
 
-### 🧩 Hafıza Sistemi
-- Zihin bulmacaları ve anı rekonstrüksiyonu
-- Etik seçimler: Hafızayı silmek mi, paylaşmak mı?
-- Duygusal bağlantılı hafıza parçaları
+### Core Systems
 
-### 📱 Mobil Optimizasyon
-- Tek parmakla sürükle-bırak kontrol sistemi
-- Dokunmatik ekran için optimize edilmiş UI
-- Dikey ekran orientasyonu
+#### � **GameManager** (Singleton)
+- Game state management and progression tracking
+- Player statistics and save/load functionality
+- Session management and ethical choice recording
 
-## 🛠️ Teknik Detaylar
+#### 🗺️ **DungeonGenerator** (Singleton)  
+- Procedural level generation based on mind profiles
+- Room-based layout with emotional distribution
+- Dynamic tile placement and corridor connections
 
-### Platform
-- **Engine**: Godot 4.3
-- **Target Platform**: Android
-- **Rendering**: 2D with isometric view
-- **Graphics**: Pixel art style
+#### 🧠 **MemorySystem** (Singleton)
+- Memory fragment collection and reconstruction
+- Turkish language content generation
+- Ethical dilemma creation and choice tracking
 
-### Proje Yapısı
+#### ⚙️ **HackingSystem** (Singleton)
+- Cursor tool implementation and cooldown management
+- Time rewind buffer system with state snapshots
+- Code injection mini-games and effect application
+
+#### 🎨 **SpriteGenerator** (Singleton)
+- Real-time pixel art generation for all game elements
+- Emotion-based color schemes and corruption effects
+- Dynamic sprite creation for walls, floors, entities
+
+#### ✨ **EffectsManager** (Singleton)
+- Comprehensive visual effects library (15+ effects)
+- Cyberpunk UI styling system
+- Particle systems and screen effects
+
+### 🎭 Character Systems
+
+#### � **Player (Cursor)**
+- Touch-based movement with collision detection
+- Health/energy management and damage system
+- Digital trail effects and interaction handling
+- Rewind state management for time manipulation
+
+#### � **Enemy AI System**
+- **Corruptor**: Aggressive pursuer with corruption spreading
+- **Looper**: Pattern-recording enemy that creates temporal echoes
+- **PhantomMemory**: Ethereal entity that steals memories and phases through walls
+
+#### 🧩 **Memory Fragments**
+- Interactive collectibles with Turkish cultural content
+- Professional and emotional context generation
+- Reconstruction weight system for puzzle completion
+
+## 🎮 Gameplay Flow
+
+1. **🏠 Main Menu**: Cyberpunk-styled interface with settings
+2. **🌊 Neural Dive**: Enter a randomly generated mind
+3. **🏃 Exploration**: Navigate dungeons using touch controls
+4. **⚔️ Combat**: Use hack tools to defeat corrupted entities
+5. **� Collection**: Gather memory fragments throughout levels
+6. **🤔 Ethical Choices**: Decide fate of recovered memories
+7. **� Results**: View statistics and make final decisions
+8. **🔄 Progression**: Return to surface or dive deeper
+
+## �️ Development Features
+
+### 🔧 **Error Handling & Robustness**
+- Comprehensive null-checking and validation
+- Fallback systems for missing data
+- Graceful degradation when components fail
+
+### � **Mobile Optimization** 
+- Touch-first interface design
+- Appropriate collision layers and physics
+- Android-optimized rendering and controls
+
+### 🎨 **Visual Polish**
+- No placeholder graphics - everything procedurally generated
+- Consistent cyberpunk aesthetic throughout
+- Smooth animations and particle effects
+
+### 🎵 **Audio Framework**
+- Volume control system (Master/SFX)
+- Audio bus configuration ready for sound implementation
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Godot 4.3 or later
+- Android SDK (for mobile deployment)
+
+### Installation
+1. Clone this repository
+2. Open the project in Godot 4.3+
+3. Set up Android export template (optional)
+4. Run the project
+
+### Controls
+- **Touch/Drag**: Move cursor
+- **Z Key**: Time Rewind hack tool
+- **X Key**: Code Injection hack tool  
+- **C Key**: Memory Scan hack tool
+- **ESC**: Pause/Resume game
+- **Enter/Space**: Accept (menus)
+
+## 📁 Project Structure
+
 ```
-📁 scenes/          # Oyun sahneleri (.tscn dosyaları)
-📁 scripts/         # GDScript kodları
-  📁 singletons/    # Global sistem scriptleri
-  📁 player/        # Oyuncu kontrol scriptleri
-  📁 enemies/       # Düşman AI scriptleri
-  📁 systems/       # Oyun sistemleri
-📁 assets/          # Grafikler, sesler, vb.
-  📁 sprites/       # Sprite dosyaları
-  📁 audio/         # Ses dosyaları
-  📁 icons/         # UI ikonları
+CURSOR/
+├── scenes/
+│   ├── Main.tscn          # Main game scene
+│   ├── Menu.tscn          # Main menu
+│   └── GameOver.tscn      # End game screen
+├── scripts/
+│   ├── singletons/        # Core game systems
+│   ├── player/            # Player controller
+│   ├── enemies/           # AI enemy types  
+│   ├── systems/           # Generation & effects
+│   └── ui/                # Interface scripts
+└── assets/
+    └── icons/             # Game icons
 ```
 
-### Temel Sistemler
-- **GameManager**: Oyun durumu ve ilerleyiş yönetimi
-- **DungeonGenerator**: Procedural zindan oluşturma
-- **MemorySystem**: Hafıza parçaları ve rekonstrüksiyon
-- **HackingSystem**: Cursor tool'ları ve mini oyunlar
+## 🌟 Key Innovations
 
-## 🚀 Kurulum ve Çalıştırma
+- **🧠 Psychological Dungeon Design**: Levels reflect human emotional states
+- **🔄 Temporal Mechanics**: Time rewind system with state management
+- **🎨 Real-time Art Generation**: No pre-made sprites required
+- **📖 Cultural Storytelling**: Turkish language memories and narratives
+- **⚖️ Ethical Gameplay**: Meaningful choices about digital consciousness
+- **📱 Mobile-First Design**: Built specifically for touch interaction
 
-### Gereksinimler
-- Godot 4.3 veya üzeri
-- Android SDK (mobil export için)
+## 🔮 Future Enhancements
 
-### Geliştirme Ortamı
-1. Bu repository'yi klonlayın
-2. Godot'ta `project.godot` dosyasını açın
-3. F5 ile oyunu çalıştırın
+- � Dynamic soundtrack based on emotional states
+- 🗣️ Voice acting for memory fragments  
+- 🌐 Multiplayer collaborative hacking
+- 🎯 Achievement system and progression trees
+- 📊 Analytics dashboard for memory choices
+- 🔧 Level editor for custom minds
 
-### Kontroller
-- **Mouse/Touch**: Hareket için sürükle-bırak
-- **Z**: Time Rewind hack tool
-- **X**: Data Leak hack tool  
-- **C**: Memory Scan hack tool
+## 📄 License
 
-## 🎯 Mevcut Durum
+This project is available for educational and personal use. Commercial use requires permission.
 
-Bu proje henüz geliştirme aşamasındadır. Şu anki durumda:
+## 🙏 Acknowledgments
 
-### ✅ Tamamlanan Özellikler
-- ✅ **Temel Framework**: Godot 4.3 projesi, singleton sistemleri
-- ✅ **Procedural Graphics**: Duygusal tema bazlı dinamik sprite oluşturma
-- ✅ **Enemy AI**: 3 farklı düşman tipi (Corruptor, Looper, PhantomMemory)
-  - Corruptor: Saldırgan, corruption yayan, rage modu
-  - Looper: Pattern takip eden, duplicate yaratan, temporal saldırılar
-  - PhantomMemory: Hayalet, hafıza çalan, illusion yaratan
-- ✅ **Cursor Tools**: Tam işlevsel hack araçları
-  - Time Rewind (CTRL-Z): Gerçek zaman geri sarma
-  - Code Injection: Düşman davranış değiştirme
-  - Data Leak: Gizli içerik açığa çıkarma
-  - Memory Scan: Hafıza parçası tespiti
-- ✅ **Visual Effects**: Cyberpunk stil görsel efektler
-  - Glitch efektleri, data stream'ler, explosion parçacıkları
-  - Matrix rain, hologram efektleri, scan lines
-  - Cyberpunk UI styling (neon borders, glow effects)
-- ✅ **Dynamic Dungeon Rendering**: Emotion-based tile generation
-- ✅ **Memory System**: Türkçe hafıza içerikleri, emotional profiling
-- ✅ **Mobile Touch Controls**: Optimized drag-to-move system
-
-### 🔄 Yeni Eklenen (Bu Güncellemede)
-- 🎨 **Procedural Sprite Generation**: Tamamen dinamik piksel art
-- 🤖 **Advanced Enemy AI**: Üç benzersiz düşman tipi ve davranışları
-- ✨ **Visual Effects System**: 15+ farklı görsel efekt
-- 🎮 **Enhanced UI**: Cyberpunk temalı arayüz tasarımı
-- 🔧 **Code Injection System**: Düşman hack mekanikleri
-
-### 📋 Gelecek Planlar
-- Hikaye modu
-- Multiplayer "ghost" sistemi
-- Daha gelişmiş procedural generation
-- Mobile-specific optimizasyonlar
-- Google Play Store yayınlama
-
-## 🎨 Sanat Yönergeleri
-
-### Görsel Stil
-- İzometrik 2.5D perspektif
-- Piksel art (16x16 base tile size)
-- Cyberpunk/digital tema
-- Renk paleti: Soğuk mavi, mor, neon aksentleri
-- Glitch efektleri ve dijital bozulmalar
-
-### UI Tasarım
-- Minimalist ve modern
-- Semi-transparent paneller
-- Neon çerçeveler
-- Cyberpunk tipografi
-
-## 📄 Lisans
-
-Bu proje MIT lisansı altında geliştirilmektedir.
-
-## 🤝 Katkı
-
-Projeye katkıda bulunmak isteyenler:
-1. Fork yapın
-2. Feature branch oluşturun
-3. Değişikliklerinizi commit edin
-4. Pull request açın
-
-## 📧 İletişim
-
-Proje hakkında sorularınız için issue açabilirsiniz.
+- Built with Godot Engine 4.3
+- Inspired by cyberpunk aesthetics and psychological exploration
+- Turkish cultural elements and storytelling traditions
 
 ---
 
-**Not**: Bu oyun konsepti ve geliştirme projesi, modern oyun tasarımı prensipleri ve mobil platform gereksinimleri göz önünde bulundurularak tasarlanmıştır.
+**CURSOR: Fragments of the Forgotten** - *Enter the digital minds of the forgotten. Hack • Explore • Remember*
+
+*Version Alpha 1.0 - Neural Dive Ready*

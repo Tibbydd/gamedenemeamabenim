@@ -128,11 +128,59 @@ func start_game() -> void:
 	GameManager.start_new_game()
 
 func _process(delta: float) -> void:
+	# Only update when not paused
+	if GameManager.current_state == GameManager.GameState.PAUSED:
+		return
+	
+	# Update game time
+	GameManager.time_in_current_level += delta
+	
 	update_ui()
 	
 	# Update camera to follow player
 	if player:
 		camera.global_position = player.global_position
+	
+	# Check for game over conditions
+	check_game_over_conditions()
+
+func check_game_over_conditions() -> void:
+	# Check if player died
+	if GameManager.player_health <= 0:
+		trigger_game_over(false)
+		return
+	
+	# Check if all fragments collected (victory condition)
+	if GameManager.memory_fragments_collected >= GameManager.total_fragments_in_level and GameManager.total_fragments_in_level > 0:
+		trigger_game_over(true)
+		return
+	
+	# Check if energy depleted
+	if GameManager.cursor_energy <= 0:
+		trigger_game_over(false)
+		return
+
+func trigger_game_over(victory: bool) -> void:
+	print("Triggering game over. Victory: ", victory)
+	
+	# Prevent multiple triggers
+	if GameManager.current_state == GameManager.GameState.GAME_OVER:
+		return
+	
+	# Update GameManager state
+	GameManager.trigger_game_over(victory)
+	
+	# Add dramatic effect
+	if victory:
+		EffectsManager.create_screen_flash(Color.GREEN, 1.0)
+	else:
+		EffectsManager.create_screen_flash(Color.RED, 1.0)
+	
+	# Wait for effect then transition
+	await get_tree().create_timer(1.0).timeout
+	
+	# Change to game over scene
+	get_tree().change_scene_to_file("res://scenes/GameOver.tscn")
 
 func update_ui() -> void:
 	# Update health bar
@@ -194,8 +242,8 @@ func render_dungeon() -> void:
 	print("Rendering dungeon with ", dungeon.rooms.size(), " rooms")
 	
 	# Generate emotion-based tile sprites
-	var emotion = dungeon.mind_profile.primary_emotion
-	var corruption = dungeon.mind_profile.corruption_level
+	var emotion = dungeon.mind_profile.get("primary_emotion", "neutral")
+	var corruption = dungeon.mind_profile.get("corruption_level", 0.5)
 	
 	# Render rooms
 	for room in dungeon.rooms:
@@ -256,6 +304,8 @@ func render_room(room: DungeonGenerator.Room, emotion: String, corruption: float
 					collision_shape.shape = rect_shape
 					static_body.add_child(collision_shape)
 					static_body.position = Vector2(world_x, world_y)
+					static_body.collision_layer = 8  # Environment layer
+					static_body.collision_mask = 0   # Walls don't need to detect anything
 					static_body.add_to_group("walls")
 					dungeon_renderer.add_child(static_body)
 				else:
@@ -426,13 +476,69 @@ func _on_time_rewind_activated() -> void:
 		)
 
 func _input(event: InputEvent) -> void:
-	# Handle keyboard shortcuts for hack tools
-	if event.is_action_pressed("hack_time_rewind"):
-		_on_time_rewind_pressed()
-	elif event.is_action_pressed("hack_data_leak"):
-		_on_data_leak_pressed()
-	elif event.is_action_pressed("hack_memory_scan"):
-		_on_memory_scan_pressed()
+	# Handle pause
+	if event.is_action_pressed("ui_cancel"):
+		toggle_pause()
+		return
+	
+	# Only allow hack tools when not paused
+	if GameManager.current_state != GameManager.GameState.PAUSED:
+		# Handle keyboard shortcuts for hack tools
+		if event.is_action_pressed("hack_time_rewind"):
+			_on_time_rewind_pressed()
+		elif event.is_action_pressed("hack_data_leak"):
+			_on_data_leak_pressed()
+		elif event.is_action_pressed("hack_memory_scan"):
+			_on_memory_scan_pressed()
+
+func toggle_pause() -> void:
+	if GameManager.current_state == GameManager.GameState.PLAYING:
+		GameManager.current_state = GameManager.GameState.PAUSED
+		get_tree().paused = true
+		show_pause_menu()
+		print("Game paused")
+	elif GameManager.current_state == GameManager.GameState.PAUSED:
+		GameManager.current_state = GameManager.GameState.PLAYING
+		get_tree().paused = false
+		hide_pause_menu()
+		print("Game resumed")
+
+func show_pause_menu() -> void:
+	# Create simple pause overlay
+	var pause_overlay = ColorRect.new()
+	pause_overlay.name = "PauseOverlay"
+	pause_overlay.color = Color(0, 0, 0, 0.7)
+	pause_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pause_overlay.process_mode = Node.PROCESS_MODE_WHEN_PAUSED
+	
+	var pause_container = VBoxContainer.new()
+	pause_container.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	
+	var pause_label = Label.new()
+	pause_label.text = "NEURAL DIVE PAUSED"
+	pause_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	pause_label.add_theme_color_override("font_color", Color.CYAN)
+	pause_label.add_theme_font_size_override("font_size", 32)
+	
+	var instruction_label = Label.new()
+	instruction_label.text = "Press ESC to resume\nPress Q to return to menu"
+	instruction_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	instruction_label.add_theme_color_override("font_color", Color.WHITE)
+	instruction_label.add_theme_font_size_override("font_size", 16)
+	
+	pause_container.add_child(pause_label)
+	pause_container.add_child(instruction_label)
+	pause_overlay.add_child(pause_container)
+	
+	ui_layer.add_child(pause_overlay)
+	
+	# Apply cyberpunk styling
+	EffectsManager.apply_cyberpunk_panel_style(pause_overlay)
+
+func hide_pause_menu() -> void:
+	var pause_overlay = ui_layer.get_node_or_null("PauseOverlay")
+	if pause_overlay:
+		pause_overlay.queue_free()
 
 # Input map actions (these would be defined in the project settings)
 # hack_time_rewind: Z key

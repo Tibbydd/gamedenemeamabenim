@@ -16,7 +16,11 @@ func load_enemy_scenes() -> void:
 	pass
 
 func spawn_enemies_for_room(room: DungeonGenerator.Room, parent_node: Node2D) -> void:
-	var emotion = DungeonGenerator.current_dungeon.mind_profile.primary_emotion
+	if not DungeonGenerator.current_dungeon:
+		print("Warning: No current dungeon available for enemy spawning")
+		return
+		
+	var emotion = DungeonGenerator.current_dungeon.mind_profile.get("primary_emotion", "neutral")
 	
 	# Spawn enemies based on room type and enemy spawn points
 	for spawn_pos in room.enemy_spawns:
@@ -93,8 +97,12 @@ func create_enemy(enemy_type: Enemy.EnemyType, emotion: String) -> Enemy:
 	return enemy
 
 func spawn_boss_enemy(room: DungeonGenerator.Room, parent_node: Node2D) -> Enemy:
-	var emotion = DungeonGenerator.current_dungeon.mind_profile.primary_emotion
-	var corruption_level = DungeonGenerator.current_dungeon.mind_profile.corruption_level
+	if not DungeonGenerator.current_dungeon:
+		print("Warning: No current dungeon available for boss spawning")
+		return null
+		
+	var emotion = DungeonGenerator.current_dungeon.mind_profile.get("primary_emotion", "neutral")
+	var corruption_level = DungeonGenerator.current_dungeon.mind_profile.get("corruption_level", 0.5)
 	
 	# Create enhanced boss version
 	var boss_type = determine_enemy_type(room.type, emotion)
