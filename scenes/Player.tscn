@@ -1,0 +1,39 @@
+[gd_scene load_steps=3 format=3 uid="uid://ct4fho1b8nlbh"]
+
+[ext_resource type="Script" path="res://scripts/player/Player.gd" id="1_r2m4g"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
+size = Vector2(24, 24)
+
+[node name="Player" type="CharacterBody2D" groups=["player"]]
+script = ExtResource("1_r2m4g")
+
+[node name="Sprite" type="ColorRect" parent="."]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -12.0
+offset_top = -12.0
+offset_right = 12.0
+offset_bottom = 12.0
+color = Color(0.2, 0.8, 1, 1)
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_1")
+
+[node name="HealthComponent" type="Node2D" parent="."]
+
+[node name="MovementComponent" type="Node2D" parent="."]
+
+[node name="TouchArea" type="Area2D" parent="."]
+
+[node name="TouchCollision" type="CollisionShape2D" parent="TouchArea"]
+shape = SubResource("RectangleShape2D_1")
+
+[node name="GlowEffect" type="Node2D" parent="."]
+
+[node name="DigitalTrail" type="Line2D" parent="."]
+width = 2.0
+default_color = Color(0.4, 0.9, 1, 0.5)
