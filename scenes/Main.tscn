@@ -159,12 +159,12 @@ text = "[center]Mind details will appear here[/center]"
 
 [node name="WorldContainer" type="Node2D" parent="."]
 
-[node name="DungeonRenderer" type="Node2D" parent="WorldContainer"]
+[node name="DungeonRenderer" type="Node2D" parent="WorldContainer" groups=["dungeon_renderer"]]
 
 [node name="Player" parent="WorldContainer" instance=ExtResource("2_m7kj4")]
 
-[node name="Enemies" type="Node2D" parent="WorldContainer"]
+[node name="Enemies" type="Node2D" parent="WorldContainer" groups=["enemies"]]
 
-[node name="MemoryFragments" type="Node2D" parent="WorldContainer"]
+[node name="MemoryFragments" type="Node2D" parent="WorldContainer" groups=["memory_fragments"]]
 
-[node name="Effects" type="Node2D" parent="WorldContainer"]
+[node name="Effects" type="Node2D" parent="WorldContainer" groups=["effects"]]

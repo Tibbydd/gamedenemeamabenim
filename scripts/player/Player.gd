@@ -39,7 +39,7 @@ var is_invulnerable: bool = false
 var invulnerability_time: float = 0.0
 
 # Node references
-@onready var sprite: ColorRect = $Sprite
+@onready var sprite: Sprite2D = $Sprite
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 @onready var touch_area: Area2D = $TouchArea
 @onready var digital_trail: Line2D = $DigitalTrail
@@ -53,11 +53,20 @@ func _ready() -> void:
 	# Connect touch signals
 	touch_area.input_event.connect(_on_touch_area_input)
 	
+	# Generate player sprite
+	generate_player_sprite()
+	
 	# Setup digital effects
 	setup_digital_effects()
 	
 	# Add to player group
 	add_to_group("player")
+
+func generate_player_sprite() -> void:
+	# Generate the player cursor sprite using SpriteGenerator
+	if sprite:
+		sprite.texture = SpriteGenerator.create_player_sprite()
+		print("Player sprite generated")
 
 func _process(delta: float) -> void:
 	# Handle movement
@@ -195,7 +204,7 @@ func update_digital_trail(delta: float) -> void:
 func setup_digital_effects() -> void:
 	# Setup sprite glow effect
 	if sprite:
-		sprite.color = Color(0.3, 0.8, 1.0, 1.0)  # Cyan cursor color
+		sprite.modulate = Color(0.3, 0.8, 1.0, 1.0)  # Cyan cursor color
 		
 		# Add a subtle glow animation
 		var tween = create_tween()
@@ -286,11 +295,11 @@ func become_invulnerable(duration: float) -> void:
 
 func flash_damage_effect() -> void:
 	# Flash red when taking damage
-	var original_color = sprite.color
-	sprite.color = Color.RED
+	var original_modulate = sprite.modulate
+	sprite.modulate = Color.RED
 	
 	var tween = create_tween()
-	tween.tween_property(sprite, "color", original_color, 0.2)
+	tween.tween_property(sprite, "modulate", original_modulate, 0.2)
 
 func die() -> void:
 	print("Player died!")

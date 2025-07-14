@@ -79,20 +79,31 @@ Gelecekte, insan zihni dijitalleştirilebilmektedir. Ancak ölen insanların zih
 Bu proje henüz geliştirme aşamasındadır. Şu anki durumda:
 
 ### ✅ Tamamlanan Özellikler
-- Temel proje yapısı ve Godot konfigürasyonu
-- GameManager singleton sistemi
-- Procedural dungeon generation algoritması
-- Hafıza sistemi ve emotional profiling
-- Cursor tool framework'ü
-- Temel player kontrolü (sürükle-bırak)
-- UI framework'ü
+- ✅ **Temel Framework**: Godot 4.3 projesi, singleton sistemleri
+- ✅ **Procedural Graphics**: Duygusal tema bazlı dinamik sprite oluşturma
+- ✅ **Enemy AI**: 3 farklı düşman tipi (Corruptor, Looper, PhantomMemory)
+  - Corruptor: Saldırgan, corruption yayan, rage modu
+  - Looper: Pattern takip eden, duplicate yaratan, temporal saldırılar
+  - PhantomMemory: Hayalet, hafıza çalan, illusion yaratan
+- ✅ **Cursor Tools**: Tam işlevsel hack araçları
+  - Time Rewind (CTRL-Z): Gerçek zaman geri sarma
+  - Code Injection: Düşman davranış değiştirme
+  - Data Leak: Gizli içerik açığa çıkarma
+  - Memory Scan: Hafıza parçası tespiti
+- ✅ **Visual Effects**: Cyberpunk stil görsel efektler
+  - Glitch efektleri, data stream'ler, explosion parçacıkları
+  - Matrix rain, hologram efektleri, scan lines
+  - Cyberpunk UI styling (neon borders, glow effects)
+- ✅ **Dynamic Dungeon Rendering**: Emotion-based tile generation
+- ✅ **Memory System**: Türkçe hafıza içerikleri, emotional profiling
+- ✅ **Mobile Touch Controls**: Optimized drag-to-move system
 
-### 🔄 Geliştirme Devam Eden
-- Düşman AI sistemleri
-- Görsel efektler ve shader'lar
-- Ses sistemi
-- Piksel art asset'leri
-- Mini oyun sistemleri
+### 🔄 Yeni Eklenen (Bu Güncellemede)
+- 🎨 **Procedural Sprite Generation**: Tamamen dinamik piksel art
+- 🤖 **Advanced Enemy AI**: Üç benzersiz düşman tipi ve davranışları
+- ✨ **Visual Effects System**: 15+ farklı görsel efekt
+- 🎮 **Enhanced UI**: Cyberpunk temalı arayüz tasarımı
+- 🔧 **Code Injection System**: Düşman hack mekanikleri
 
 ### 📋 Gelecek Planlar
 - Hikaye modu
