@@ -1,0 +1,140 @@
+[gd_scene load_steps=2 format=3 uid="uid://cgj8kp1vx6qfm"]
+
+[ext_resource type="Script" path="res://scripts/ui/Menu.gd" id="1_p5g2s"]
+
+[node name="Menu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1_p5g2s")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.05, 0.05, 0.15, 1)
+
+[node name="BackgroundEffect" type="Node2D" parent="."]
+
+[node name="MainContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -250.0
+offset_right = 200.0
+offset_bottom = 250.0
+
+[node name="TitleLabel" type="Label" parent="MainContainer"]
+layout_mode = 2
+text = "CURSOR
+Fragments of the Forgotten"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Spacer1" type="Control" parent="MainContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 50)
+
+[node name="ButtonContainer" type="VBoxContainer" parent="MainContainer"]
+layout_mode = 2
+
+[node name="StartButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+text = "START NEURAL DIVE"
+
+[node name="Spacer2" type="Control" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 10)
+
+[node name="SettingsButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+text = "SYSTEM SETTINGS"
+
+[node name="Spacer3" type="Control" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 10)
+
+[node name="ExitButton" type="Button" parent="MainContainer/ButtonContainer"]
+layout_mode = 2
+text = "DISCONNECT"
+
+[node name="Spacer4" type="Control" parent="MainContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 50)
+
+[node name="InfoLabel" type="RichTextLabel" parent="MainContainer"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 100)
+bbcode_enabled = true
+text = "[center][color=cyan]Version Alpha 1.0[/color]
+[color=gray]Enter the digital minds of the forgotten
+Hack • Explore • Remember[/color][/center]"
+fit_content = true
+
+[node name="SettingsPanel" type="Panel" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -250.0
+offset_top = -200.0
+offset_right = 250.0
+offset_bottom = 200.0
+
+[node name="SettingsContainer" type="VBoxContainer" parent="SettingsPanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = -20.0
+
+[node name="SettingsTitle" type="Label" parent="SettingsPanel/SettingsContainer"]
+layout_mode = 2
+text = "SYSTEM SETTINGS"
+horizontal_alignment = 1
+
+[node name="HSeparator" type="HSeparator" parent="SettingsPanel/SettingsContainer"]
+layout_mode = 2
+
+[node name="VolumeContainer" type="VBoxContainer" parent="SettingsPanel/SettingsContainer"]
+layout_mode = 2
+
+[node name="MasterVolumeLabel" type="Label" parent="SettingsPanel/SettingsContainer/VolumeContainer"]
+layout_mode = 2
+text = "Master Volume"
+
+[node name="MasterVolumeSlider" type="HSlider" parent="SettingsPanel/SettingsContainer/VolumeContainer"]
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="SFXVolumeLabel" type="Label" parent="SettingsPanel/SettingsContainer/VolumeContainer"]
+layout_mode = 2
+text = "SFX Volume"
+
+[node name="SFXVolumeSlider" type="HSlider" parent="SettingsPanel/SettingsContainer/VolumeContainer"]
+layout_mode = 2
+max_value = 1.0
+step = 0.01
+value = 1.0
+
+[node name="Spacer" type="Control" parent="SettingsPanel/SettingsContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="BackButton" type="Button" parent="SettingsPanel/SettingsContainer"]
+layout_mode = 2
+text = "BACK"
