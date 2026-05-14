@@ -1,0 +1,36 @@
+; Engine configuration file.
+; PC-first first-person cyberpunk space-horror prototype.
+
+[application]
+
+config/name="Perception Breach Prototype"
+config/description="A greybox FPS survival horror horde shooter prototype about lethal combat and cognitive corruption."
+run/main_scene="res://scenes/PrototypeArena.tscn"
+config/features=PackedStringArray("4.3", "Forward Plus")
+config/icon="res://assets/icons/icon.svg"
+
+[autoload]
+
+GameEvents="*res://scripts/core/GameEvents.gd"
+InputBus="*res://scripts/core/InputBus.gd"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+
+[rendering]
+
+renderer/rendering_method="forward_plus"
+textures/canvas_textures/default_texture_filter=1
+anti_aliasing/quality/msaa_3d=2
+
+[physics]
+
+3d/default_gravity=18.0
+
+[debug]
+
+gdscript/warnings/enable=true
