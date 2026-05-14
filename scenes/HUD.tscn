@@ -1,0 +1,151 @@
+[gd_scene load_steps=8 format=3 uid="uid://bhud1"]
+
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="1_hud"]
+
+[sub_resource type="StyleBoxFlat" id="HpBg"]
+bg_color = Color(0.1, 0.05, 0.07, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.4, 0.1, 0.15, 1)
+
+[sub_resource type="StyleBoxFlat" id="HpFill"]
+bg_color = Color(0.85, 0.2, 0.3, 1)
+
+[sub_resource type="StyleBoxFlat" id="EnBg"]
+bg_color = Color(0.05, 0.07, 0.1, 0.85)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.1, 0.35, 0.45, 1)
+
+[sub_resource type="StyleBoxFlat" id="EnFill"]
+bg_color = Color(0.2, 0.85, 1, 1)
+
+[sub_resource type="StyleBoxFlat" id="BtnNormal"]
+bg_color = Color(0.08, 0.45, 0.6, 0.85)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.35, 1, 1, 1)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+
+[sub_resource type="StyleBoxFlat" id="BtnPressed"]
+bg_color = Color(0.04, 0.25, 0.35, 0.95)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.3, 0.9, 1, 1)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+
+[sub_resource type="StyleBoxFlat" id="BtnDisabled"]
+bg_color = Color(0.12, 0.12, 0.16, 0.6)
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(0.3, 0.3, 0.35, 1)
+corner_radius_top_left = 24
+corner_radius_top_right = 24
+corner_radius_bottom_right = 24
+corner_radius_bottom_left = 24
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="Root" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="Top" type="HBoxContainer" parent="Root"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 40.0
+offset_top = 60.0
+offset_right = -40.0
+offset_bottom = 130.0
+mouse_filter = 2
+theme_override_constants/separation = 32
+
+[node name="HpBar" type="ProgressBar" parent="Root/Top"]
+custom_minimum_size = Vector2(484, 70)
+mouse_filter = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+theme_override_styles/background = SubResource("HpBg")
+theme_override_styles/fill = SubResource("HpFill")
+
+[node name="EnergyBar" type="ProgressBar" parent="Root/Top"]
+custom_minimum_size = Vector2(484, 70)
+mouse_filter = 2
+max_value = 100.0
+value = 100.0
+show_percentage = false
+theme_override_styles/background = SubResource("EnBg")
+theme_override_styles/fill = SubResource("EnFill")
+
+[node name="Bottom" type="Control" parent="Root"]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -260.0
+offset_right = -40.0
+offset_bottom = -40.0
+mouse_filter = 2
+
+[node name="ScanButton" type="Button" parent="Root/Bottom"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "SCAN"
+theme_override_font_sizes/font_size = 56
+theme_override_styles/normal = SubResource("BtnNormal")
+theme_override_styles/pressed = SubResource("BtnPressed")
+theme_override_styles/hover = SubResource("BtnNormal")
+theme_override_styles/disabled = SubResource("BtnDisabled")
+
+[node name="EndPanel" type="ColorRect" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.72)
+
+[node name="Center" type="CenterContainer" parent="EndPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+
+[node name="VBox" type="VBoxContainer" parent="EndPanel/Center"]
+mouse_filter = 2
+theme_override_constants/separation = 40
+
+[node name="EndLabel" type="Label" parent="EndPanel/Center/VBox"]
+mouse_filter = 2
+text = "END"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 120
+
+[node name="RestartLabel" type="Label" parent="EndPanel/Center/VBox"]
+mouse_filter = 2
+modulate = Color(0.8, 0.85, 0.9, 1)
+text = "tap or press any key to restart"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 44

@@ -1,0 +1,27 @@
+[gd_scene load_steps=4 format=3 uid="uid://bcorrupt1"]
+
+[ext_resource type="Script" path="res://scripts/enemies/corruptor.gd" id="1_corrupt"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_corrupt_body"]
+radius = 7.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_corrupt_dmg"]
+radius = 10.0
+
+[node name="Corruptor" type="CharacterBody2D"]
+collision_layer = 2
+collision_mask = 5
+script = ExtResource("1_corrupt")
+
+[node name="Sprite" type="Sprite2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_corrupt_body")
+
+[node name="DamageZone" type="Area2D" parent="."]
+collision_layer = 2
+collision_mask = 1
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="DamageZone"]
+shape = SubResource("CircleShape2D_corrupt_dmg")
