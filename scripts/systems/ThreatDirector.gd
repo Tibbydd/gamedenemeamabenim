@@ -6,9 +6,9 @@ var enemy_container: Node3D
 var spawn_points: Array[Node3D] = []
 var active_enemies: Array[EnemyBase3D] = []
 var elapsed: float = 0.0
-var survival_duration: float = 180.0
-var extraction_enable_time: float = 135.0
-var extraction_active: bool = false
+var survival_duration: float = 2400.0
+var floor_route_enable_time: float = 2100.0
+var floor_route_active: bool = false
 var threat_level: float = 0.0
 var spawn_timer: float = 4.0
 var enemies_killed: int = 0
@@ -35,11 +35,11 @@ func _process(delta: float) -> void:
 	noise_pressure = max(0.0, noise_pressure - delta * 0.12)
 	_cleanup_dead_enemies()
 	_update_threat()
-	if not extraction_active and elapsed >= extraction_enable_time:
-		extraction_active = true
-		GameEvents.report_extraction_available()
+	if not floor_route_active and elapsed >= floor_route_enable_time:
+		floor_route_active = true
+		GameEvents.report_floor_route_available()
 	if elapsed >= survival_duration:
-		GameEvents.end_run(true, "survived the full breach window")
+		GameEvents.end_run(true, "secured this floor long enough to move on")
 		return
 	spawn_timer -= delta
 	if spawn_timer <= 0.0:
@@ -93,7 +93,7 @@ func _pick_spawn_point() -> Node3D:
 	return best_point
 
 func _next_spawn_interval() -> float:
-	return lerp(7.5, 2.0, threat_level)
+	return lerp(24.0, 5.0, threat_level)
 
 func _cleanup_dead_enemies() -> void:
 	for i in range(active_enemies.size() - 1, -1, -1):

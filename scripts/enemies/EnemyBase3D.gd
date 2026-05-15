@@ -9,6 +9,7 @@ var navigation_agent: NavigationAgent3D
 var attack_range: float = 1.6
 var attack_cooldown: float = 0.0
 var base_speed: float = 3.3
+var gravity: float = 18.0
 var dead: bool = false
 var stagger_timer: float = 0.0
 var shove_velocity: Vector3 = Vector3.ZERO
@@ -18,6 +19,7 @@ var core_mesh: MeshInstance3D
 
 func _ready() -> void:
 	add_to_group("enemies")
+	gravity = ProjectSettings.get_setting("physics/3d/default_gravity", gravity)
 	_build_physics_body()
 	_build_visuals()
 	navigation_agent = NavigationAgent3D.new()
@@ -41,27 +43,39 @@ func set_target(new_target) -> void:
 	target = new_target
 
 func _physics_process(delta: float) -> void:
-	if dead or not target:
+	if dead:
+		return
+	if not target:
+		_apply_gravity(delta)
+		move_and_slide()
 		return
 	attack_cooldown = max(0.0, attack_cooldown - delta)
 	if stagger_timer > 0.0:
 		stagger_timer -= delta
-		velocity = shove_velocity
+		velocity.x = shove_velocity.x
+		velocity.z = shove_velocity.z
 		shove_velocity = shove_velocity.move_toward(Vector3.ZERO, delta * 10.0)
+		_apply_gravity(delta)
 		move_and_slide()
 		return
 	senses.update_senses(target, delta)
 	brain.update(self, senses, target, delta)
 	if brain.state == EnemyDecisionStateMachine.State.ATTACK:
-		velocity = velocity.lerp(Vector3.ZERO, delta * 8.0)
+		velocity.x = lerp(velocity.x, 0.0, delta * 8.0)
+		velocity.z = lerp(velocity.z, 0.0, delta * 8.0)
 		_try_attack()
 	else:
 		_move_toward(brain.desired_position, delta)
+	_apply_gravity(delta)
 	move_and_slide()
 
 func _move_toward(world_position: Vector3, delta: float) -> void:
 	navigation_agent.target_position = world_position
 	var next_position := world_position
+	if not navigation_agent.is_navigation_finished():
+		var path_position := navigation_agent.get_next_path_position()
+		if path_position.distance_squared_to(global_position) > 0.01:
+			next_position = path_position
 	var direction := next_position - global_position
 	direction.y = 0.0
 	if direction.length() < 0.15:
@@ -73,6 +87,12 @@ func _move_toward(world_position: Vector3, delta: float) -> void:
 	velocity.x = direction.x * speed
 	velocity.z = direction.z * speed
 	look_at(global_position + direction, Vector3.UP)
+
+func _apply_gravity(delta: float) -> void:
+	if not is_on_floor():
+		velocity.y -= gravity * delta
+	else:
+		velocity.y = -0.05
 
 func _try_attack() -> void:
 	if attack_cooldown > 0.0 or not target:

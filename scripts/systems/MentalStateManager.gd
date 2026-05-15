@@ -54,7 +54,7 @@ func get_status_suffix() -> String:
 	if corruption < 55.0:
 		return "AUDIO CONTACT?"
 	if corruption < 80.0:
-		return "HUD TRUST DEGRADED"
+		return "DISPLAY TRUST DEGRADED"
 	return "REALITY DESYNC"
 
 func _apply_placeholder_effects(delta: float) -> void:

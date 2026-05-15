@@ -18,7 +18,7 @@ func _build_placeable_catalog() -> void:
 		_make_placeable("trip_mine", "Trip Mine", "contact blast trap", "trip_mine", Vector3(0.55, 0.18, 0.55), Color(0.45, 0.16, 0.12), 2, 4.0, 20.0, 3.2, 14.0),
 		_make_placeable("noise_lure", "Noise Lure", "draws enemies by sound", "noisemaker", Vector3(0.45, 0.3, 0.45), Color(0.16, 0.38, 0.42), 2, 3.0, 18.0, 5.5, 5.0),
 		_make_placeable("shock_pylon", "Shock Pylon", "short stun pulse", "shock_pylon", Vector3(0.42, 0.9, 0.42), Color(0.08, 0.35, 0.68), 2, 7.0, 28.0, 2.6, 10.0),
-		_make_placeable("foam_seal", "Foam Seal", "plugs gaps or slows pathing", "foam_seal", Vector3(1.1, 0.75, 0.55), Color(0.66, 0.72, 0.68), 3, 6.0, 40.0, 1.4, 3.0),
+		_make_placeable("gap_brace", "Gap Brace", "wedges gaps or slows pathing", "gap_brace", Vector3(1.1, 0.75, 0.55), Color(0.5, 0.58, 0.54), 3, 6.0, 40.0, 1.4, 3.0),
 		_make_placeable("turret_frame", "Turret Frame", "future repairable defense", "turret_stub", Vector3(0.7, 0.82, 0.7), Color(0.28, 0.34, 0.36), 1, 14.0, 65.0, 2.0, 5.0),
 		_make_placeable("motion_sensor", "Motion Sensor", "future route alarm", "sensor", Vector3(0.36, 0.52, 0.36), Color(0.08, 0.5, 0.75), 2, 3.0, 16.0, 4.0, 2.0),
 		_make_placeable("glow_flare", "Glow Flare", "light and enemy attention", "flare", Vector3(0.24, 0.24, 0.62), Color(0.95, 0.34, 0.12), 4, 1.5, 12.0, 3.5, 2.0),
@@ -44,6 +44,13 @@ func cycle_next() -> void:
 	if placeables.is_empty():
 		return
 	selected_index = (selected_index + 1) % placeables.size()
+
+func add_charge_to_selected(amount: int) -> void:
+	if placeables.is_empty() or amount <= 0:
+		return
+	var definition := placeables[selected_index]
+	definition["charges"] = int(definition["charges"]) + amount
+	placeables[selected_index] = definition
 
 func try_place() -> bool:
 	if not camera or not owner_body or placeables.is_empty():

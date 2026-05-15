@@ -5,6 +5,7 @@ signal health_changed
 signal treatment_started(treatment_name: String)
 signal treatment_finished(treatment_name: String)
 signal died(reason: String)
+signal damage_taken(part_name: String, amount: float, damage_type: String, result: Dictionary)
 
 const PART_HEAD := "head"
 const PART_CHEST := "chest"
@@ -90,13 +91,15 @@ func apply_damage(part_name: String, amount: float, damage_type: String = "traum
 	parts[part_name] = part
 	_check_lethal_parts()
 	health_changed.emit()
-	return {
+	var result := {
 		"part": part_name,
 		"remaining": part["current"],
 		"bleeding": bleed_rate > 0.0,
 		"fractured": part["fractured"],
 		"destroyed": part["destroyed"]
 	}
+	damage_taken.emit(part_name, amount, damage_type, result)
+	return result
 
 func _can_fracture(part_name: String) -> bool:
 	return part_name in [PART_LEFT_ARM, PART_RIGHT_ARM, PART_LEFT_LEG, PART_RIGHT_LEG]
@@ -201,6 +204,40 @@ func get_handling_modifier() -> float:
 		elif bool(arm["fractured"]) or ratio < 0.35:
 			modifier -= 0.15
 	return clamp(modifier, 0.45, 1.0)
+
+func get_part_ratio(part_name: String) -> float:
+	if not parts.has(part_name):
+		return 1.0
+	var part: Dictionary = parts[part_name]
+	return clamp(float(part["current"]) / float(part["max"]), 0.0, 1.0)
+
+func is_part_destroyed(part_name: String) -> bool:
+	if not parts.has(part_name):
+		return false
+	return bool(parts[part_name]["destroyed"])
+
+func is_arm_compromised(part_name: String) -> bool:
+	if not [PART_LEFT_ARM, PART_RIGHT_ARM].has(part_name):
+		return false
+	var arm: Dictionary = parts[part_name]
+	return bool(arm["destroyed"]) or bool(arm["fractured"]) or get_part_ratio(part_name) < 0.35
+
+func is_two_handed_compromised() -> bool:
+	return is_arm_compromised(PART_LEFT_ARM) or is_arm_compromised(PART_RIGHT_ARM)
+
+func can_hold_weapon() -> bool:
+	return not (is_part_destroyed(PART_LEFT_ARM) and is_part_destroyed(PART_RIGHT_ARM))
+
+func get_weapon_handling_state() -> String:
+	if is_part_destroyed(PART_LEFT_ARM) and is_part_destroyed(PART_RIGHT_ARM):
+		return "NO FUNCTIONAL GRIP"
+	if is_arm_compromised(PART_LEFT_ARM) and is_arm_compromised(PART_RIGHT_ARM):
+		return "TWO BAD ARMS"
+	if is_arm_compromised(PART_LEFT_ARM):
+		return "LEFT ARM COMPROMISED"
+	if is_arm_compromised(PART_RIGHT_ARM):
+		return "RIGHT ARM COMPROMISED"
+	return "STABLE GRIP"
 
 func get_stamina_modifier() -> float:
 	var stomach: Dictionary = parts[PART_STOMACH]

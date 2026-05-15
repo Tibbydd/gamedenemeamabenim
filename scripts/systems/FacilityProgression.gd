@@ -105,6 +105,14 @@ func get_door_state(door_id: String) -> String:
 		return DOOR_LOCKED
 	return String(doors[door_id]["state"])
 
+func set_door_state(door_id: String, state: String) -> void:
+	if not doors.has(door_id):
+		register_door(door_id, "", state)
+		return
+	var door: Dictionary = doors[door_id]
+	door["state"] = state
+	doors[door_id] = door
+
 func register_access_point(access_id: String, connected_room_id: String, access_kind: String, state: String = ACCESS_FRESH) -> void:
 	if access_points.has(access_id):
 		return

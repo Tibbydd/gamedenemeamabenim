@@ -83,7 +83,7 @@ func activate(reason: String) -> void:
 		GameEvents.emit_player_noise(global_position, 18.0)
 	elif behavior == "sensor":
 		GameEvents.emit_player_noise(global_position, 12.0)
-	elif behavior == "foam_seal":
+	elif behavior == "gap_brace":
 		linear_velocity = Vector3.ZERO
 
 func _on_body_entered(body: Node) -> void:
