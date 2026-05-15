@@ -27,8 +27,17 @@ func wants_fire() -> bool:
 func wants_aim() -> bool:
 	return Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 
+func wants_stealth_walk() -> bool:
+	return Input.is_key_pressed(KEY_ALT)
+
 func wants_reload(event: InputEvent) -> bool:
 	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R
+
+func wants_weapon_check(event: InputEvent) -> bool:
+	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_H
+
+func wants_weapon_inspect(event: InputEvent) -> bool:
+	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_I
 
 func wants_interact(event: InputEvent) -> bool:
 	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_E

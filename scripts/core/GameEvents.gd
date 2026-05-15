@@ -5,7 +5,7 @@ signal run_ended(success: bool, reason: String)
 signal player_noise_made(position: Vector3, loudness: float)
 signal enemy_killed(enemy: Node, cause: String)
 signal threat_changed(threat_level: float)
-signal extraction_available
+signal floor_route_available
 signal player_corruption_changed(value: float)
 signal environment_impulse_made(position: Vector3, radius: float, force: float, source: Node, reason: String)
 
@@ -37,8 +37,8 @@ func report_enemy_killed(enemy: Node, cause: String) -> void:
 func report_threat_changed(threat_level: float) -> void:
 	threat_changed.emit(threat_level)
 
-func report_extraction_available() -> void:
-	extraction_available.emit()
+func report_floor_route_available() -> void:
+	floor_route_available.emit()
 
 func report_player_corruption(value: float) -> void:
 	player_corruption_changed.emit(value)
