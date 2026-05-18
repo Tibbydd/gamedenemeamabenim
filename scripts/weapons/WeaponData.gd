@@ -5,17 +5,17 @@ class_name WeaponData
 @export var weapon_id: String = "m7_colony_pistol"
 @export var weapon_family: String = "sidearm"
 @export var ammo_type: String = "light_ballistic"
-@export var damage: float = 36.0
-@export var muzzle_velocity: float = 95.0
-@export var projectile_gravity: float = 7.0
-@export var projectile_lifetime: float = 2.0
-@export var fire_rate: float = 5.5
+@export var damage: float = 38.0
+@export var muzzle_velocity: float = 105.0
+@export var projectile_gravity: float = 6.5
+@export var projectile_lifetime: float = 2.2
+@export var fire_rate: float = 5.0
 @export var magazine_size: int = 12
 @export var reserve_ammo: int = 48
-@export var reload_time: float = 1.45
-@export var spread_degrees: float = 0.45
-@export var loudness: float = 52.0
-@export var recoil_pitch: float = 0.018
+@export var reload_time: float = 1.35
+@export var spread_degrees: float = 0.35
+@export var loudness: float = 58.0
+@export var recoil_pitch: float = 0.02
 
 static func create_starting_pistol() -> WeaponData:
 	return create_weapon("m7_colony_pistol")

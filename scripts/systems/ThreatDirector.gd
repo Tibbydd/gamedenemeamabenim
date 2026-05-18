@@ -6,14 +6,13 @@ var enemy_container: Node3D
 var spawn_points: Array[Node3D] = []
 var active_enemies: Array[EnemyBase3D] = []
 var elapsed: float = 0.0
-var survival_duration: float = 2400.0
-var floor_route_enable_time: float = 2100.0
-var floor_route_active: bool = false
+var threat_ramp_reference: float = 2400.0
 var threat_level: float = 0.0
 var spawn_timer: float = 4.0
 var enemies_killed: int = 0
 var noise_pressure: float = 0.0
 var max_active_enemies: int = 18
+var station_floor: int = 0
 
 func setup(new_player: PlayerControllerFPS, new_enemy_container: Node3D, new_spawn_points: Array[Node3D]) -> void:
 	player = new_player
@@ -28,6 +27,9 @@ func set_player(new_player) -> void:
 		if is_instance_valid(enemy):
 			enemy.set_target(player)
 
+func set_station_floor(floor_index: int) -> void:
+	station_floor = floor_index
+
 func _process(delta: float) -> void:
 	if not GameEvents.run_active or not player:
 		return
@@ -35,32 +37,26 @@ func _process(delta: float) -> void:
 	noise_pressure = max(0.0, noise_pressure - delta * 0.12)
 	_cleanup_dead_enemies()
 	_update_threat()
-	if not floor_route_active and elapsed >= floor_route_enable_time:
-		floor_route_active = true
-		GameEvents.report_floor_route_available()
-	if elapsed >= survival_duration:
-		GameEvents.end_run(true, "secured this floor long enough to move on")
-		return
 	spawn_timer -= delta
 	if spawn_timer <= 0.0:
-		_spawn_pressure_wave()
+		_spawn_pressure_event()
 		spawn_timer = _next_spawn_interval()
 
 func _update_threat() -> void:
-	var time_pressure := elapsed / survival_duration
+	var time_pressure: float = clamp(elapsed / max(1.0, threat_ramp_reference), 0.0, 0.45)
 	var kill_pressure := enemies_killed * 0.035
 	var corruption_pressure := player.mental.corruption / 180.0 if player.mental else 0.0
 	threat_level = clamp(time_pressure + kill_pressure + noise_pressure + corruption_pressure, 0.0, 1.0)
 	GameEvents.report_threat_changed(threat_level)
 
-func _spawn_pressure_wave() -> void:
+func _spawn_pressure_event() -> void:
 	if active_enemies.size() >= max_active_enemies:
 		return
-	var wave_size := 1 + int(threat_level * 3.0)
+	var spawn_count := 1 + int(threat_level * 3.0)
 	if randf() < threat_level:
-		wave_size += 1
-	wave_size = min(wave_size, max_active_enemies - active_enemies.size())
-	for i in range(wave_size):
+		spawn_count += 1
+	spawn_count = min(spawn_count, max_active_enemies - active_enemies.size())
+	for i in range(spawn_count):
 		_spawn_enemy()
 
 func _spawn_enemy() -> void:
@@ -73,6 +69,7 @@ func spawn_enemy_at(spawn_position: Vector3):
 	if not enemy_container:
 		return null
 	var enemy := EnemyBase3D.new()
+	enemy.archetype_id = EnemyArchetypeCatalog.pick_for_floor_and_threat(station_floor, threat_level)
 	enemy.global_position = spawn_position
 	enemy_container.add_child(enemy)
 	enemy.set_target(player)
@@ -100,7 +97,7 @@ func _cleanup_dead_enemies() -> void:
 		if not is_instance_valid(active_enemies[i]) or active_enemies[i].dead:
 			active_enemies.remove_at(i)
 
-func _on_enemy_killed(enemy: Node, cause: String) -> void:
+func _on_enemy_killed(_enemy: Node, _cause: String) -> void:
 	enemies_killed += 1
 	noise_pressure = min(0.45, noise_pressure + 0.04)
 
@@ -108,4 +105,4 @@ func _on_player_noise(position: Vector3, loudness: float) -> void:
 	noise_pressure = min(0.35, noise_pressure + loudness / 600.0)
 
 func get_remaining_time() -> float:
-	return max(0.0, survival_duration - elapsed)
+	return elapsed

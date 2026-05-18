@@ -10,16 +10,21 @@ var health: float = 65.0
 var is_dead: bool = false
 var leg_impairment: float = 0.0
 var attack_impairment: float = 0.0
+var armor_profile: Dictionary = {}
 
-func setup(new_enemy: EnemyBase3D) -> void:
+func setup(new_enemy: EnemyBase3D, definition: Dictionary = {}) -> void:
 	enemy = new_enemy
+	if not definition.is_empty():
+		max_health = float(definition.get("health", max_health))
+		var armor: Dictionary = definition.get("armor", {})
+		armor_profile = armor.duplicate(true)
 	health = max_health
 	_create_hit_zones()
 
-func receive_hit(zone_name: String, base_damage: float, multiplier: float, lethal: bool, armor: float, hit_position: Vector3, hit_direction: Vector3, weapon_name: String) -> void:
+func receive_hit(zone_name: String, base_damage: float, multiplier: float, lethal: bool, armor: float, hit_position: Vector3, _hit_direction: Vector3, weapon_name: String) -> void:
 	if is_dead:
 		return
-	var armor_reduction := clamp(armor, 0.0, 0.85)
+	var armor_reduction: float = clamp(armor, 0.0, 0.85)
 	var final_damage := base_damage * multiplier * (1.0 - armor_reduction)
 	if lethal and base_damage >= 24.0:
 		final_damage = max(final_damage, max_health * 2.0)
@@ -47,13 +52,16 @@ func kill(cause: String) -> void:
 		enemy.die(cause)
 
 func _create_hit_zones() -> void:
-	_make_zone("head", _sphere(0.23), Vector3(0, 1.72, 0), 3.0, true, 0.0)
-	_make_zone("parasite_core", _sphere(0.19), Vector3(0, 1.12, -0.32), 3.5, true, 0.0)
-	_make_zone("torso", _box(Vector3(0.55, 0.8, 0.35)), Vector3(0, 1.0, 0), 1.0, false, 0.08)
-	_make_zone("left_arm", _box(Vector3(0.22, 0.7, 0.22)), Vector3(-0.43, 1.08, 0), 0.65, false, 0.0)
-	_make_zone("right_arm", _box(Vector3(0.22, 0.7, 0.22)), Vector3(0.43, 1.08, 0), 0.65, false, 0.0)
-	_make_zone("left_leg", _box(Vector3(0.24, 0.75, 0.24)), Vector3(-0.18, 0.38, 0), 0.55, false, 0.0)
-	_make_zone("right_leg", _box(Vector3(0.24, 0.75, 0.24)), Vector3(0.18, 0.38, 0), 0.55, false, 0.0)
+	_make_zone("head", _sphere(0.23), Vector3(0, 1.72, 0), 3.0, true, _armor("head", 0.0))
+	_make_zone("parasite_core", _sphere(0.19), Vector3(0, 1.12, -0.32), 3.5, true, _armor("parasite_core", 0.0))
+	_make_zone("torso", _box(Vector3(0.55, 0.8, 0.35)), Vector3(0, 1.0, 0), 1.0, false, _armor("torso", 0.08))
+	_make_zone("left_arm", _box(Vector3(0.22, 0.7, 0.22)), Vector3(-0.43, 1.08, 0), 0.65, false, _armor("left_arm", 0.0))
+	_make_zone("right_arm", _box(Vector3(0.22, 0.7, 0.22)), Vector3(0.43, 1.08, 0), 0.65, false, _armor("right_arm", 0.0))
+	_make_zone("left_leg", _box(Vector3(0.24, 0.75, 0.24)), Vector3(-0.18, 0.38, 0), 0.55, false, _armor("left_leg", 0.0))
+	_make_zone("right_leg", _box(Vector3(0.24, 0.75, 0.24)), Vector3(0.18, 0.38, 0), 0.55, false, _armor("right_leg", 0.0))
+
+func _armor(zone_name: String, fallback: float) -> float:
+	return float(armor_profile.get(zone_name, fallback))
 
 func _make_zone(zone_name: String, shape: Shape3D, local_position: Vector3, multiplier: float, lethal: bool, armor: float) -> void:
 	var zone := EnemyHitZone3D.new()

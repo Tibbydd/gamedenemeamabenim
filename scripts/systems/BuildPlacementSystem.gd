@@ -52,6 +52,18 @@ func add_charge_to_selected(amount: int) -> void:
 	definition["charges"] = int(definition["charges"]) + amount
 	placeables[selected_index] = definition
 
+func add_charge_to_item(item_id: String, amount: int) -> bool:
+	if placeables.is_empty() or amount <= 0:
+		return false
+	for index in range(placeables.size()):
+		var definition := placeables[index]
+		if String(definition["id"]) != item_id:
+			continue
+		definition["charges"] = int(definition["charges"]) + amount
+		placeables[index] = definition
+		return true
+	return false
+
 func try_place() -> bool:
 	if not camera or not owner_body or placeables.is_empty():
 		return false

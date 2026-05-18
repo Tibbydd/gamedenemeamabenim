@@ -38,9 +38,10 @@ func use(actor: Node) -> void:
 			return
 	activated = true
 	_update_visual(true)
+	GameEvents.request_sound("interact", global_position, 0.75)
 	service_used.emit(node_id, service_type, target_id, method_id, actor)
 
-func receive_generic_hit(damage: float, hit_position: Vector3, hit_direction: Vector3) -> void:
+func receive_generic_hit(damage: float, _hit_position: Vector3, _hit_direction: Vector3) -> void:
 	if method_id == "impact_reset" and damage >= 8.0:
 		use(null)
 
@@ -69,10 +70,4 @@ func _update_visual(active: bool) -> void:
 		mesh_instance.material_override = _make_material(Color(0.16, 0.8, 0.52) if active else Color(0.12, 0.2, 0.22), 0.55 if active else 0.12)
 
 func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	if emission_energy > 0.0:
-		material.emission_enabled = true
-		material.emission = color
-		material.emission_energy_multiplier = emission_energy
-	return material
+	return EffectMaterialCache.get_material(color, emission_energy)

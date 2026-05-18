@@ -28,11 +28,11 @@ func use(_actor: Node) -> void:
 	if hazard_type in ["steam", "pressure_dump", "crusher"]:
 		activate("manual_use")
 
-func receive_generic_hit(damage: float, hit_position: Vector3, hit_direction: Vector3) -> void:
+func receive_generic_hit(damage: float, _hit_position: Vector3, _hit_direction: Vector3) -> void:
 	if damage >= trigger_damage:
 		activate("projectile")
 
-func apply_environment_impulse(origin: Vector3, force: float, radius: float, reason: String) -> void:
+func apply_environment_impulse(_origin: Vector3, force: float, _radius: float, reason: String) -> void:
 	if force >= trigger_damage * 0.45:
 		activate(reason)
 
@@ -41,7 +41,12 @@ func activate(reason: String) -> void:
 		return
 	armed = false
 	_update_visual_active()
+	GameEvents.request_sound("hazard_" + hazard_type, global_position, 1.0)
 	GameEvents.emit_environment_impulse(global_position, effect_radius, effect_force, self, hazard_type + "_" + reason)
+	if hazard_type == "steam":
+		GameEvents.request_visibility_haze(global_position, effect_radius + 1.5, 8.0, 0.65)
+	elif hazard_type == "coolant":
+		GameEvents.request_visibility_haze(global_position, effect_radius, 10.0, 0.35)
 	_damage_nearby_enemies()
 	_damage_nearby_player()
 	if hazard_type in ["blast", "coolant"]:
@@ -55,7 +60,7 @@ func _damage_nearby_enemies() -> void:
 		var distance := enemy_node.global_position.distance_to(global_position)
 		if distance > effect_radius:
 			continue
-		var falloff := clamp(1.0 - distance / effect_radius, 0.2, 1.0)
+		var falloff: float = clamp(1.0 - distance / effect_radius, 0.2, 1.0)
 		var direction := (enemy_node.global_position - global_position).normalized()
 		if direction.length() < 0.01:
 			direction = Vector3.UP
@@ -72,7 +77,7 @@ func _damage_nearby_player() -> void:
 		var distance := player.global_position.distance_to(global_position)
 		if distance > effect_radius:
 			continue
-		var falloff := clamp(1.0 - distance / effect_radius, 0.15, 1.0)
+		var falloff: float = clamp(1.0 - distance / effect_radius, 0.15, 1.0)
 		var zone := PlayerHealthBodyParts.PART_CHEST
 		if hazard_type == "steam":
 			zone = PlayerHealthBodyParts.PART_HEAD
@@ -110,10 +115,4 @@ func _update_visual_active() -> void:
 	mesh_instance.material_override = _make_material(color, 0.85)
 
 func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	var material := StandardMaterial3D.new()
-	material.albedo_color = color
-	if emission_energy > 0.0:
-		material.emission_enabled = true
-		material.emission = color
-		material.emission_energy_multiplier = emission_energy
-	return material
+	return EffectMaterialCache.get_material(color, emission_energy)

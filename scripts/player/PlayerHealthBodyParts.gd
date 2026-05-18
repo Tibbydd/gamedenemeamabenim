@@ -18,9 +18,11 @@ const PART_RIGHT_LEG := "right_leg"
 var parts := {}
 var blood_volume: float = 100.0
 var bleed_rate: float = 0.0
+var untreated_bleed_time: float = 0.0
 var pain: float = 0.0
 var shock: float = 0.0
 var stimulant_time: float = 0.0
+var burn_time: float = 0.0
 var is_dead: bool = false
 var active_treatment: String = ""
 var treatment_time_left: float = 0.0
@@ -32,15 +34,21 @@ func _process(delta: float) -> void:
 	if is_dead:
 		return
 	if bleed_rate > 0.0:
+		untreated_bleed_time += delta
 		blood_volume = max(0.0, blood_volume - bleed_rate * delta)
+		_update_infection_pressure(delta)
 		if blood_volume <= 0.0:
 			kill("blood loss")
+	else:
+		untreated_bleed_time = 0.0
 	if pain > 0.0:
 		pain = max(0.0, pain - delta * 2.0)
 	if shock > 0.0:
 		shock = max(0.0, shock - delta * 3.0)
 	if stimulant_time > 0.0:
 		stimulant_time = max(0.0, stimulant_time - delta)
+	if burn_time > 0.0:
+		burn_time = max(0.0, burn_time - delta)
 	if treatment_time_left > 0.0:
 		treatment_time_left -= delta
 		if treatment_time_left <= 0.0:
@@ -59,9 +67,11 @@ func reset() -> void:
 	}
 	blood_volume = 100.0
 	bleed_rate = 0.0
+	untreated_bleed_time = 0.0
 	pain = 0.0
 	shock = 0.0
 	stimulant_time = 0.0
+	burn_time = 0.0
 	is_dead = false
 	active_treatment = ""
 	treatment_time_left = 0.0
@@ -72,7 +82,8 @@ func _make_part(max_value: float) -> Dictionary:
 		"max": max_value,
 		"current": max_value,
 		"fractured": false,
-		"destroyed": false
+		"destroyed": false,
+		"infected": false
 	}
 
 func apply_damage(part_name: String, amount: float, damage_type: String = "trauma") -> Dictionary:
@@ -86,6 +97,8 @@ func apply_damage(part_name: String, amount: float, damage_type: String = "traum
 		part["fractured"] = true
 	if amount >= 10.0 and damage_type != "blunt":
 		bleed_rate += amount * 0.035
+	if damage_type == "burn" or damage_type == "fire" or damage_type == "thermal" or damage_type == "steam":
+		burn_time = max(burn_time, clamp(amount * 0.22, 2.5, 12.0))
 	pain = min(100.0, pain + amount * 0.8)
 	shock = min(100.0, shock + amount * 0.35)
 	parts[part_name] = part
@@ -96,7 +109,8 @@ func apply_damage(part_name: String, amount: float, damage_type: String = "traum
 		"remaining": part["current"],
 		"bleeding": bleed_rate > 0.0,
 		"fractured": part["fractured"],
-		"destroyed": part["destroyed"]
+		"destroyed": part["destroyed"],
+		"infected": part["infected"]
 	}
 	damage_taken.emit(part_name, amount, damage_type, result)
 	return result
@@ -126,13 +140,36 @@ func start_quick_bandage() -> bool:
 	treatment_started.emit("Quick Bandage")
 	return true
 
-func start_trauma_kit() -> bool:
+func start_trauma_kit(treatment_duration: float = 3.0) -> bool:
 	if not _can_start_treatment():
 		return false
 	active_treatment = "trauma_kit"
-	treatment_time_left = 3.0
+	treatment_time_left = treatment_duration
 	treatment_started.emit("Trauma Kit")
 	return true
+
+func use_cauterizer() -> bool:
+	if bleed_rate <= 0.0 or is_dead:
+		return false
+	bleed_rate = 0.0
+	untreated_bleed_time = 0.0
+	pain = min(100.0, pain + 8.0)
+	health_changed.emit()
+	return true
+
+func apply_splint_roll() -> bool:
+	for part_name in [PART_LEFT_ARM, PART_RIGHT_ARM, PART_LEFT_LEG, PART_RIGHT_LEG]:
+		var part: Dictionary = parts[part_name]
+		if not bool(part["fractured"]):
+			continue
+		part["fractured"] = false
+		var capped_max := float(part["max"]) * 0.5
+		part["current"] = max(float(part["current"]), capped_max)
+		part["current"] = min(float(part["current"]), capped_max)
+		parts[part_name] = part
+		health_changed.emit()
+		return true
+	return false
 
 func use_injector() -> bool:
 	if is_dead:
@@ -156,10 +193,13 @@ func _finish_treatment() -> void:
 	var finished := active_treatment
 	if active_treatment == "quick_bandage":
 		bleed_rate = max(0.0, bleed_rate - 3.0)
+		if bleed_rate <= 0.0:
+			untreated_bleed_time = 0.0
 	elif active_treatment == "trauma_kit":
 		var part_name := _most_damaged_part()
 		var part: Dictionary = parts[part_name]
 		part["current"] = min(float(part["max"]), float(part["current"]) + float(part["max"]) * 0.45)
+		part["infected"] = false
 		parts[part_name] = part
 		pain = max(0.0, pain - 25.0)
 	active_treatment = ""
@@ -177,6 +217,22 @@ func _most_damaged_part() -> String:
 			worst_ratio = ratio
 			worst_name = part_name
 	return worst_name
+
+func _update_infection_pressure(delta: float) -> void:
+	if untreated_bleed_time < 45.0:
+		return
+	var infected_parts := 0
+	for part_name in parts.keys():
+		var part: Dictionary = parts[part_name]
+		if bool(part["infected"]):
+			infected_parts += 1
+			pain = min(100.0, pain + 0.5 * delta)
+	if infected_parts > 0:
+		return
+	var part_to_infect := _most_damaged_part()
+	var infected_part: Dictionary = parts[part_to_infect]
+	infected_part["infected"] = true
+	parts[part_to_infect] = infected_part
 
 func get_movement_modifier() -> float:
 	if stimulant_time > 0.0:
@@ -244,7 +300,7 @@ func get_stamina_modifier() -> float:
 	var chest: Dictionary = parts[PART_CHEST]
 	var stomach_ratio := float(stomach["current"]) / float(stomach["max"])
 	var chest_ratio := float(chest["current"]) / float(chest["max"])
-	var blood_modifier := clamp(blood_volume / 100.0, 0.25, 1.0)
+	var blood_modifier: float = clamp(blood_volume / 100.0, 0.25, 1.0)
 	return clamp(min(stomach_ratio, chest_ratio) * blood_modifier, 0.25, 1.0)
 
 func get_status_lines() -> Array[String]:
@@ -258,6 +314,8 @@ func get_status_lines() -> Array[String]:
 		]
 		if bool(part["fractured"]):
 			text += " FRACTURE"
+		if bool(part["infected"]):
+			text += " INFECTED"
 		if bool(part["destroyed"]):
 			text += " DESTROYED"
 		lines.append(text)
@@ -265,4 +323,6 @@ func get_status_lines() -> Array[String]:
 		lines.append("BLEEDING %.1f/s" % bleed_rate)
 	if stimulant_time > 0.0:
 		lines.append("STIM %.0fs" % stimulant_time)
+	if burn_time > 0.0:
+		lines.append("BURNING %.0fs" % burn_time)
 	return lines

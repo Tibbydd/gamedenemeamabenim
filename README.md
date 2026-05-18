@@ -20,7 +20,7 @@ The prototype should prove:
 - Fair enemy sensing and pressure behavior
 - A horde/threat director
 - One readable mental corruption effect
-- Floor traversal, death, successor handoff, predecessor recovery, and long-term escape scaffolding
+- Floor traversal, found exits, death, successor handoff, predecessor recovery, and long-term escape scaffolding
 
 This branch treats the usual immersive sim and sci-fi horror references as inspiration only. Creature, tool, weapon, and comms designs should stay original to this project.
 
@@ -51,11 +51,15 @@ This branch treats the usual immersive sim and sci-fi horror references as inspi
 - Pressure doors are now physical bodies. They can be locked, jammed, sealed, opened by powered overrides, or forced open with enough damage/impulse.
 - The previous survivor leaves a physical lost kit at the death location. It does not despawn.
 - The first survivor starts with an earpiece. Later survivors must recover it from the predecessor kit to hear the outside contact again.
+- Lost kits now preserve weapon state, wearable modules, lens damage, a generated last note, and a short route trace for route-mapper users.
+- Kits decay across additional successor handoffs, and Surgeon-class enemies can consume part of their contents if they reach the body first.
 - Every survivor gets a randomized starting loadout: background, ammo variance, and possible flashlight type.
 - Flashlight states currently include none, handheld, vest-mounted, helmet-mounted, and weapon-mounted.
 - Flashlights can also be found as physical equipment pickups in the facility.
 - Hidden route records now exist for vents, crawlspaces, and catwalks, with placeholder geometry hints in the arena.
 - Station route, lighting, door, module, environmental-kill, and economy catalogs now exist with multiple variants for content expansion.
+- Successor entry selection now filters blocked access points and sealed-door rooms, with maintenance crawlspace fallback behavior.
+- Lost kits preserve weapon identity, ammo type, resources, earpiece state, and build-item recovery instead of granting generic supplies.
 
 Current survivor entry scenarios:
 
@@ -100,6 +104,9 @@ Human eyes do not provide a HUD. The prototype now treats readouts as equipment:
 - Reticle Lens: glasses module for projected crosshair.
 - Sound Meter: glasses module for stealth-noise estimation.
 - Low-Light Filter and Threat Classifier: future visual-analysis modules.
+- Glasses use physical module slots, can overload their frame power budget, and can drain power cells when too many modules are active.
+- Head hits can damage the glasses lens, leaving a diegetic cracked/warped overlay.
+- Under heavy corruption, modules can contradict each other: sound, ammo, route text, and comms can drift or briefly report wrong states.
 
 Without the relevant modules, the player must rely on physical behavior: magazine checks, weapon inspection, sound, light, body state, and memory.
 
@@ -128,6 +135,8 @@ Current light restoration variants include:
 
 Door problems are meant to have several routes through or around them. Current solution data covers access credentials, local override power, shooting lock housings, maintenance bypass, hidden routes, manual pry, shove/bash force, reverse motor, cutting charges, service-space bypass, cable patching, actuator replacement, and adjacent-floor power routing.
 
+Some of those verbs now exist in the greybox: lock housings can be shot as specific hit zones, reverse-motor and cut-debris service panels open problem doors, and solver traces remain in the world. Sealed-door events can reveal nearby hidden-route records.
+
 Environmental kill variants currently include:
 
 - Volatile tank blast
@@ -147,12 +156,23 @@ Grounded economy items currently include:
 - Access credential
 - Cutting charge
 - Medical stock
+- Crash kit
+- Field cauterizer pen
+- Earpiece patch
+- Suppressor wrap
+- Magnetic puller
+- Suit patch
+- Match-grade rounds
+- Boot grips
+- Coolant canister
+- Static charge
+- Splint roll
 
 Station module variants currently include habitation, medical, industrial, research, administration, and exterior works modules, each with multiple gameplay/story uses.
 
 ## Build And World Interaction Prototype
 
-- `E`: use/push/interact with the object under the crosshair
+- `E`: use/push/interact with the object under the crosshair; on loose props, carry/set down
 - `C`: cycle build/placeable item
 - `G`: place selected item
 
@@ -186,6 +206,22 @@ Weapon attachment variants currently include:
 
 Arm injuries now affect weapon handling. A compromised arm increases weapon instability and reload pressure; heavy impact to an arm can knock the weapon loose, especially without a retention sling.
 
+Reloading with rounds still in a ballistic weapon now drops a recoverable partial magazine instead of deleting or magically preserving ammunition. Thermal tools build heat; abusive firing can burn the weapon arm.
+
+Reloading preserves a chambered round when possible; manual ammo checks now describe chamber and magazine feel instead of abstract ammo buckets.
+
+Dropped weapons are physical pickups with condition, ammo, chamber, and attachment state. Weapon condition decays from use and drops, attachments have durability, and suppressors wear out. Ammo telemetry enables glasses ammo readout but emits a small position-betraying ping.
+
+Carry/throw props, bullet penetration on soft props, cover destruction, pressure-decoy buttons, coolant/electric combos, steam haze, and flare attraction now run through the shared world event logic.
+
+Current enemy archetype data includes stalker husks, crawler husks, bleeders, carapace forms, echoes, howlers, sleeper pods, paired flankers, glasswalkers, surgeons, choirs, shellroots, and relay-voice threats. Not all have final art or full bespoke behavior yet, but the director can spawn varied stat/sense/armor profiles.
+
+There is no countdown-based extraction. Horde pressure is a station awareness/survival problem, not a timed arena clear. The player leaves a floor by finding and using a believable route such as stairs, elevators, ladders, vents, hoists, or exterior paths.
+
+Floor routes now transition the same persistent session instead of ending a short extraction run. The current prototype reuses the arena as a floor-content slice, refreshes hazards or pickups, and only ends the run when the final station escape floor is reached.
+
+A basic procedural audio router now exists for gunshots, suppressed shots, reloads, magazine drops, interaction beeps, pickups, enemy grunts/attacks/deaths, hazards, doors, buttons, movement, comms, telemetry pings, and heartbeat. Mental corruption can replay real sound profiles from false positions, with a small chance that the "false" sound is backed by a real noise event.
+
 ## Prototype Controls
 
 - `WASD`: move
@@ -195,38 +231,42 @@ Arm injuries now affect weapon handling. A compromised arm increases weapon inst
 - `Shift`: sprint
 - `Alt`: stealth walk
 - `Ctrl`: crouch
-- `E`: use/push/interact
-- `F`: shove/bash a close enemy away from the weapon
+- `E`: use/push/interact; on loose props, carry or set down
+- `F`: shove/bash a close enemy away from the weapon, or throw the carried prop
 - `H`: manual magazine check
 - `I`: inspect weapon and attachments
 - `C`: cycle build item
 - `G`: place selected build item
 - `R`: reload, or restart after temporary floor-clear/death state
 - `B`: quick bandage
-- `T`: trauma kit
+- `T`: trauma kit, crash kit, or splint roll depending on inventory/injury
 - `V`: pain injector
-- `X`: neural stabilizer
+- `X`: tap neural stabilizer, hold cognitive anchor
+- `F3`: debug overlay
 - `Esc`: release mouse
 - `Enter`: recapture mouse
 
 ## Active Architecture
 
-- `scripts/MainSurvival.gd`: greybox arena, floor transition, run loop
-- `scripts/core/GameEvents.gd`: run, threat, noise, kill, and floor-route events
+- `scripts/MainSurvival.gd`: greybox arena, found exits, successor flow, and event wiring
+- `scripts/core/GameEvents.gd`: run, threat, noise, kill, sound, and environment impulse events
 - `scripts/core/InputBus.gd`: PC input helper
 - `scripts/player/PlayerControllerFPS.gd`: first-person movement, camera, diegetic equipment display gating
 - `scripts/player/PlayerHealthBodyParts.gd`: streamlined body-part injury model
 - `scripts/weapons/WeaponData.gd`: weapon tuning data
 - `scripts/weapons/WeaponController.gd`: muzzle-based firing, reload, ammo state, barrel interference
 - `scripts/weapons/BallisticProjectile.gd`: physical projectile travel, drop, and impact handling
-- `scripts/enemies/EnemyBase3D.gd`: basic parasite-husk enemy
+- `scripts/enemies/EnemyBase3D.gd`: shared enemy body, archetype setup, movement, attacks, and trait hooks
+- `scripts/enemies/EnemyArchetypeCatalog.gd`: enemy archetype data for senses, armor, speed, health, and special traits
 - `scripts/enemies/EnemyHealthHitZones.gd`: enemy damage model and weak points
 - `scripts/enemies/EnemyHitZone3D.gd`: projectile-collidable weak-point zones
 - `scripts/enemies/EnemySenses3D.gd`: fair sight/hearing/last-known-position sensing
 - `scripts/enemies/EnemyDecisionStateMachine.gd`: chase/search/flank/attack decisions
-- `scripts/systems/ThreatDirector.gd`: timed horde escalation
+- `scripts/systems/ThreatDirector.gd`: open-ended threat escalation based on time, noise, kills, and corruption
 - `scripts/systems/MentalStateManager.gd`: perception corruption placeholder
 - `scripts/systems/CommsManager.gd`: earpiece outsider contact and corruption-distorted comms
+- `scripts/systems/HiddenRouteTrigger3D.gd`: crawl/vent/catwalk route interaction trigger
+- `scripts/systems/DoorLockHousing3D.gd`: projectile-collidable door lock weak zone
 - `scripts/systems/StationSystemsCatalog.gd`: route, power, door, economy, module, and environmental interaction variants
 - `scripts/systems/StationRouteSystem.gd`: multi-floor station route/discovery scaffold
 - `scripts/systems/SectorPowerSystem.gd`: sector lighting failure and restoration scaffold
@@ -238,10 +278,94 @@ Arm injuries now affect weapon handling. A compromised arm increases weapon inst
 - `scripts/systems/DynamicObject3D.gd`: throwable/pushable world props
 - `scripts/systems/EquipmentPickup3D.gd`: findable flashlights, weapons, and grounded resource pickups
 - `scripts/systems/EnvironmentalHazard3D.gd`: physical hazard actors that can kill enemies and injure the player
+- `scripts/systems/AudioRouter.gd`: procedural placeholder 3D sound pipeline
+- `scripts/systems/EffectMaterialCache.gd`: shared material cache for reactive surfaces and props
 - `scripts/systems/FacilityDoor3D.gd`: physical door state, forced opening, and button override support
 - `scripts/systems/LostSurvivorKit3D.gd`: recoverable predecessor kit and earpiece handoff
 - `scripts/systems/DynamicButton3D.gd`: buttons that respond to use, bullets, impulses, and thrown objects
 - `scripts/systems/ReactiveStaticBody3D.gd`: static geometry that can receive damage/impulse scars
+
+## Tangible Balance Rule
+
+This branch enforces a hard rule on every system: **buffs and nerfs must be tangible, not numeric**. The catalogs are written so that every effect is a named verb, an item the player can hold, a real plate that really shatters, a specific archetype that really reacts, or a concrete trigger condition. Bullets are real calibers with per-part lethality outcomes. Shock resistance comes from a specific worn item that confers shock resistance, not a "+20% protection" stat. The threat director and comms can read tags and trust thresholds by name. Code should branch on these named outcomes rather than scaling damage or chance.
+
+The runtime impact of every entry is summarized inline in the catalog data, so future work can keep adding mechanics as data without inflating runtime code. This is the answer to mechanic creep: extend the catalogs, do not invent new runtime modules unless a mechanic genuinely needs one.
+
+## Tangible Mechanics Catalogs
+
+`scripts/systems/StationSystemsCatalog.gd` now also exposes:
+
+- Salvage ID tags (role + last login sector + low-tier role-only access)
+- Damaged helmet states (cracked visor adds corruption drift to glasses; destroyed helmet absorbs exactly one fatal head shot)
+- Portable beacons (HP, lighthouse-for archetype list, sector power cost)
+- Chemical flares (color-coded provokes/confuses by archetype, oxygen consumption per second)
+- Door wedges (force_work resistance hit count, visible cracked state, telegraphed enemy removal seconds)
+- Field recorder (battery slot, capture seconds, distortion source)
+- Battery chargers (charge rate, noise signature, brownout coupling)
+- Makeshift sling (recipe, 60% of retention_sling drop resistance, slower swap, visible decay, snap failure)
+- Trauma foam (two diegetic verbs: spray joint, spray hinge)
+- Route chalk (verbs, corruption rewrite threshold, archetype visibility list)
+- Sound occlusion attenuation by material and door state
+- Limb armor slots (plates with shatter counts, dropped shards, movement noise cost)
+- Oxygen zones (suit_patch consumption, panic trigger, carrion archetype gating)
+- Scent trail rules (player bleed source, decon station verb)
+- Door memory rules (force_open threshold reduction per force, jam_count surfaced in route_mapper)
+- Weapon fouling states (visible tint, cleaning verbs, noise spike)
+- Flashlight intensity tiers (parasite avoidance per tier)
+- Threat classifier modes (silhouette vs thermal-through-walls with power drain)
+- Panic reload rules (pain/shock/combined thresholds, role flags, telegraph window)
+- Route fatigue rules (per-second stamina drain by route kind, ambush bonus on low-stamina exit)
+- Map sketching rules (physical presence only, corruption inserts false dead ends)
+- Stance states (silhouette fraction, noise multiplier, fire rate multiplier)
+- Lean states (head-only exposure during ADS)
+- Traversal verbs (vault, mantle, stack up, drag corpse)
+- Reload modes (dump, tactical, manual check)
+- Weapon malfunctions (stovepipe, failure to feed, double feed, hangfire)
+- Zeroed optics (per-sight zero range and drop)
+- Bolt-throwing rules (props usable, archetypes never affected)
+- Stress shake rules (inputs and tremor form)
+- Shadow visibility table (lighting state to visibility tier)
+- Body hiding rules (hide targets, blocks scent and surgeon attractor)
+- Whistle/shout rules (baited/ignored archetypes, single-use window)
+- Sound triangulation rules (sound_meter direction arrow, corruption flip)
+- Comm wheel options (six concrete contact requests)
+- Attaché case inventory (grid, holds, drop behavior)
+- Safehouse lockbox (predecessor reach window, slot count)
+- Ruined-condition pickup ranges
+- Attachment conflicts (named slot conflicts)
+- Stack-aware reload descriptors (in-fiction strings)
+- Anomaly rooms (verbs, consumed items)
+- Fire spread, electrified water, pressure differential, and temperature rules
+- Background liabilities (every background has a named benefit AND a named cost)
+- Kit case definition (per-survivor identity item)
+- NPC survivor encounters (concrete branch outcomes)
+- Predecessor ghost trail rules
+- Floor chapter identities and unique pickups
+- Resource decay rules
+- Lighthouse beacons (re-power costs and safe-comms radius extension)
+- Audio log entries by module
+
+## Ballistic Caliber Catalog
+
+`scripts/systems/BallisticCaliberCatalog.gd` replaces "damage" with **real-world calibers** and **per-part lethality outcomes** drawn from a small set of named tiers: `lethal`, `incap`, `deep`, `graze`, `stop`. Each caliber also defines its barrier behavior against drywall, thin metal, pressure doors, glass, soft body armor, plate armor, Carapace plate, and door lock housings. Ammo subloads (FMJ, AP, HP, tracer, subsonic, match grade, incendiary, frangible) shift those tiers up or down on lookup. The supersonic crack flag is also data-driven, so directional hints to parasites are an outcome of the round actually fired, not a difficulty slider.
+
+Tabled calibers include 9x19, .45 ACP, .357 Magnum, 5.7x28, 5.56x45, 7.62x39, .308 Winchester, 12 gauge buckshot and slug, .50 BMG, and flechette darts.
+
+## Immersive Sim Design Pillars (Data)
+
+`scripts/systems/ImmersiveSimDesign.gd` codifies the pillars as queryable data:
+
+- Per-room reputation tags (`bloodshed`, `forced`, `hoarder`, `wired`, `silent`, `scorched`) with archetype attractors.
+- Trust thresholds and trust delta verbs (obey distorted, refuse distorted, verify with field recorder).
+- Floor chapter objectives and the unlock each one grants.
+- Archetype reputation triggers (kill too many Choirs and a Surgeon hunt is spawned).
+- Environment tag set for the shared event bus (fire, gas, water, coolant, electric, steam, oxygen_thin, pressure_breach, smoke, bio_growth, low_temp, high_temp).
+- Pairwise environment reactions (coolant + electric = stunned zone, steam + fire = scalding burst, etc.) with explicit durations.
+- Save terminal node list (save only at safehouses, coupled to chapter floors).
+
+## Stopping Mechanic Creep
+
+The expectation is that no further runtime modules are added without an existing system being unable to express the new mechanic. New mechanics enter the game as catalog rows first. They graduate to runtime only when a catalog row is referenced by multiple systems and needs a small shared helper. This is how the prototype keeps the surface area of a memorable immersive sim without inflating its code.
 
 ## What Is Intentionally Gone
 
@@ -251,10 +375,12 @@ Arm injuries now affect weapon handling. A compromised arm increases weapon inst
 - Scan-button dungeon mechanics
 - Time rewind
 - Mobile export focus
-- Final art, procedural generation, save/load, localization, and complex lore
+- Final art, procedural generation, localization, and complex lore
 
 ## How To Run
 
 Open the project in Godot 4.3 or a current Godot 4.x editor and run `res://scenes/PrototypeArena.tscn`.
 
 Godot is not installed in this workspace environment, so engine-level validation still needs to happen in the editor.
+
+Prototype smoke-test scaffold: `res://tests/SmokeTest.gd` boots the arena, kills the first survivor, and checks that a successor enters. Run it from a Godot 4.x command line/editor test setup once Godot is available locally.

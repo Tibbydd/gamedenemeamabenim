@@ -11,6 +11,8 @@ var status_label: Label
 var base_fov: float = 75.0
 var false_ui_timer: float = 0.0
 var last_false_hint: String = ""
+var hallucination_timer: float = 0.0
+var hallucination_sounds: Array[String] = ["enemy_grunt", "reload", "mag_drop", "gunshot", "door_forced", "loud_movement"]
 
 func setup(new_camera: Camera3D, new_overlay: ColorRect, new_status_label: Label) -> void:
 	camera = new_camera
@@ -23,6 +25,7 @@ func _process(delta: float) -> void:
 	if corruption > 0.0:
 		corruption = max(0.0, corruption - recovery_rate * delta)
 	false_ui_timer = max(0.0, false_ui_timer - delta)
+	_update_audio_hallucinations(delta)
 	_apply_placeholder_effects(delta)
 	GameEvents.report_player_corruption(corruption)
 	corruption_changed.emit(corruption)
@@ -43,8 +46,12 @@ func reduce_corruption(amount: float) -> void:
 func get_display_ammo(real_ammo: int) -> String:
 	if corruption < 55.0 or randf() > corruption / 160.0:
 		return str(real_ammo)
-	var drift := randi_range(-2, 2)
+	var drift_range := 3 if corruption >= 70.0 else 2
+	var drift := randi_range(-drift_range, drift_range)
 	return str(max(0, real_ammo + drift))
+
+func get_display_ammo_count(real_ammo: int) -> int:
+	return int(get_display_ammo(real_ammo))
 
 func get_status_suffix() -> String:
 	if corruption < 25.0:
@@ -68,6 +75,26 @@ func _apply_placeholder_effects(delta: float) -> void:
 	if status_label:
 		status_label.text = "COGNITIVE LINK: %s  %d%%" % [get_status_suffix(), int(corruption)]
 		status_label.modulate.a = 0.65 + sin(Time.get_ticks_msec() * 0.01) * amount * 0.35
+
+func _update_audio_hallucinations(delta: float) -> void:
+	hallucination_timer -= delta
+	if corruption < 62.0:
+		hallucination_timer = max(hallucination_timer, 2.0)
+		return
+	if hallucination_timer > 0.0:
+		return
+	hallucination_timer = randf_range(8.0, 17.0) * lerp(1.0, 0.45, corruption / 100.0)
+	var parent_node := get_parent()
+	if not (parent_node is Node3D):
+		return
+	var base_position := (parent_node as Node3D).global_position
+	var angle := randf() * TAU
+	var distance := randf_range(5.0, 16.0)
+	var sound_position := base_position + Vector3(cos(angle), 0.0, sin(angle)) * distance
+	var sound_id := hallucination_sounds[randi() % hallucination_sounds.size()]
+	GameEvents.request_sound(sound_id, sound_position, randf_range(0.22, 0.75))
+	if randi() % 8 == 0:
+		GameEvents.emit_player_noise(sound_position, 14.0)
 
 func _make_false_hint(source: String) -> String:
 	var hints := [

@@ -57,6 +57,9 @@ func wants_trauma_kit(event: InputEvent) -> bool:
 func wants_neural_stabilizer(event: InputEvent) -> bool:
 	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_X
 
+func is_neural_stabilizer_held() -> bool:
+	return Input.is_key_pressed(KEY_X)
+
 func wants_injector(event: InputEvent) -> bool:
 	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V
 
@@ -65,3 +68,6 @@ func wants_shove(event: InputEvent) -> bool:
 
 func wants_restart(event: InputEvent) -> bool:
 	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R
+
+func wants_debug_overlay(event: InputEvent) -> bool:
+	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F3

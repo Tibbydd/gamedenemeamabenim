@@ -3,7 +3,7 @@ class_name BallisticProjectile
 
 var damage: float = 35.0
 var velocity: Vector3 = Vector3.ZERO
-var gravity: float = 9.8
+var projectile_gravity: float = 9.8
 var lifetime: float = 2.0
 var weapon_name: String = "Projectile Weapon"
 var source_body: Node
@@ -11,13 +11,14 @@ var has_impacted: bool = false
 var previous_position: Vector3 = Vector3.ZERO
 var projectile_shape: SphereShape3D
 var max_step_distance: float = 0.18
+var penetrations_remaining: int = 2
 
 func configure(origin: Vector3, direction: Vector3, speed: float, new_damage: float, new_gravity: float, new_lifetime: float, new_weapon_name: String, new_source_body: Node) -> void:
 	global_position = origin
 	previous_position = origin
 	velocity = direction.normalized() * speed
 	damage = new_damage
-	gravity = new_gravity
+	projectile_gravity = new_gravity
 	lifetime = new_lifetime
 	weapon_name = new_weapon_name
 	source_body = new_source_body
@@ -43,12 +44,12 @@ func _physics_process(delta: float) -> void:
 
 func _advance_projectile(delta: float) -> void:
 	var projected_motion := velocity * delta
-	var step_count := max(1, int(ceil(projected_motion.length() / max_step_distance)))
+	var step_count: int = max(1, int(ceil(projected_motion.length() / max_step_distance)))
 	var step_delta := delta / float(step_count)
 	for i in range(step_count):
-		velocity.y -= gravity * step_delta
+		velocity.y -= projectile_gravity * step_delta
 		var next_position := global_position + velocity * step_delta
-		var collider = _find_overlap_at(next_position)
+		var collider: Object = _find_overlap_at(next_position)
 		global_position = next_position
 		if collider:
 			_impact_collider(collider)
@@ -64,7 +65,7 @@ func _on_body_entered(body: Node3D) -> void:
 		return
 	_impact_collider(body)
 
-func _find_overlap_at(test_position: Vector3):
+func _find_overlap_at(test_position: Vector3) -> Object:
 	if not projectile_shape:
 		return null
 	var query := PhysicsShapeQueryParameters3D.new()
@@ -76,9 +77,9 @@ func _find_overlap_at(test_position: Vector3):
 	if source_body and source_body is CollisionObject3D:
 		query.exclude = [source_body.get_rid()]
 	var hits := get_world_3d().direct_space_state.intersect_shape(query, 8)
-	var fallback_collider = null
+	var fallback_collider: Object = null
 	for hit in hits:
-		var collider = hit.get("collider")
+		var collider: Object = hit.get("collider")
 		if collider and collider != self and collider != source_body:
 			if collider.has_method("apply_hit"):
 				return collider
@@ -91,6 +92,14 @@ func _impact_collider(collider: Object) -> void:
 		collider.apply_hit(damage, global_position, velocity.normalized(), weapon_name)
 	elif collider.has_method("receive_generic_hit"):
 		collider.receive_generic_hit(damage, global_position, velocity.normalized())
+	if collider.has_method("get_penetration_loss") and penetrations_remaining > 0:
+		var penetration_loss := float(collider.get_penetration_loss())
+		if penetration_loss > 0.0 and damage > penetration_loss + 8.0:
+			damage -= penetration_loss
+			velocity *= clamp(1.0 - penetration_loss / 90.0, 0.25, 0.82)
+			penetrations_remaining -= 1
+			GameEvents.emit_environment_impulse(global_position, 0.55, max(1.2, damage * 0.12), source_body, "bullet_penetration")
+			return
 	GameEvents.emit_environment_impulse(global_position, 0.95, max(2.0, damage * 0.22), source_body, "bullet_impact")
 	_impact()
 
