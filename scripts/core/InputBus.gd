@@ -71,3 +71,15 @@ func wants_restart(event: InputEvent) -> bool:
 
 func wants_debug_overlay(event: InputEvent) -> bool:
 	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F3
+
+func wants_inventory(event: InputEvent) -> bool:
+	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_TAB
+
+func wants_jump(event: InputEvent) -> bool:
+	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE
+
+func wants_prone_toggle(event: InputEvent) -> bool:
+	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_Z
+
+func is_prone_held() -> bool:
+	return Input.is_key_pressed(KEY_Z)

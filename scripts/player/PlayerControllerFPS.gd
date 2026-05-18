@@ -85,6 +85,14 @@ var treatment_speed_modifier: float = 1.0
 var pain_spread_modifier: float = 1.0
 var recoil_trait_modifier: float = 1.0
 
+var jump_velocity: float = 5.4
+var wants_jump_this_frame: bool = false
+var is_prone: bool = false
+var prone_iframes: float = 0.0
+var prone_held_timer: float = 0.0
+var prone_key_active: bool = false
+var inventory_open: bool = false
+
 var hud_layer: CanvasLayer
 var ammo_label: Label
 var body_label: Label
@@ -95,6 +103,10 @@ var timer_label: Label
 var compass_label: Label
 var treatment_label: Label
 var crosshair_label: Label
+var crosshair_center: Label
+var crosshair_barrel: Label
+var interact_prompt_label: Label
+var inventory_detail_label: Label
 var end_label: Label
 var debug_label: Label
 var body_silhouette: BodySilhouetteHUD
@@ -327,6 +339,7 @@ func _build_systems() -> void:
 	weapon.setup(self, camera, muzzle_marker, health, mental)
 	weapon.recoil_requested.connect(_on_weapon_recoil_requested)
 	weapon.condition_changed.connect(_on_weapon_condition_changed)
+	weapon.shot_fired.connect(_on_shot_fired)
 	build_system = BuildPlacementSystem.new()
 	build_system.name = "BuildPlacementSystem"
 	add_child(build_system)
@@ -344,13 +357,51 @@ func _build_hud() -> void:
 	corruption_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	corruption_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.add_child(corruption_overlay)
-	crosshair_label = Label.new()
-	crosshair_label.text = "+"
-	crosshair_label.add_theme_font_size_override("font_size", 28)
-	crosshair_label.add_theme_color_override("font_color", Color(0.8, 1.0, 0.95))
-	crosshair_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	hud_layer.add_child(crosshair_label)
-	crosshair_label.visible = false
+	crosshair_barrel = Label.new()
+	crosshair_barrel.text = "○"
+	crosshair_barrel.add_theme_font_size_override("font_size", 28)
+	crosshair_barrel.add_theme_color_override("font_color", Color(1.0, 0.85, 0.55, 0.72))
+	crosshair_barrel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	crosshair_barrel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	crosshair_barrel.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hud_layer.add_child(crosshair_barrel)
+	crosshair_center = Label.new()
+	crosshair_center.text = "○"
+	crosshair_center.add_theme_font_size_override("font_size", 14)
+	crosshair_center.add_theme_color_override("font_color", Color(0.82, 1.0, 0.92, 0.92))
+	crosshair_center.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	crosshair_center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	crosshair_center.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	hud_layer.add_child(crosshair_center)
+	crosshair_label = crosshair_center
+	interact_prompt_label = Label.new()
+	interact_prompt_label.text = ""
+	interact_prompt_label.add_theme_font_size_override("font_size", 17)
+	interact_prompt_label.add_theme_color_override("font_color", Color(0.85, 1.0, 0.9, 0.9))
+	interact_prompt_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.8))
+	interact_prompt_label.add_theme_constant_override("shadow_offset_x", 1)
+	interact_prompt_label.add_theme_constant_override("shadow_offset_y", 1)
+	interact_prompt_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	interact_prompt_label.offset_top = 38.0
+	interact_prompt_label.offset_bottom = 70.0
+	interact_prompt_label.offset_left = -220.0
+	interact_prompt_label.offset_right = 220.0
+	interact_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hud_layer.add_child(interact_prompt_label)
+	inventory_detail_label = Label.new()
+	inventory_detail_label.text = ""
+	inventory_detail_label.add_theme_font_size_override("font_size", 16)
+	inventory_detail_label.add_theme_color_override("font_color", Color(0.78, 1.0, 0.88, 0.92))
+	inventory_detail_label.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.9))
+	inventory_detail_label.add_theme_constant_override("shadow_offset_x", 1)
+	inventory_detail_label.add_theme_constant_override("shadow_offset_y", 1)
+	inventory_detail_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
+	inventory_detail_label.offset_left = -440.0
+	inventory_detail_label.offset_right = -20.0
+	inventory_detail_label.offset_top = -300.0
+	inventory_detail_label.offset_bottom = 300.0
+	inventory_detail_label.visible = false
+	hud_layer.add_child(inventory_detail_label)
 	var left_panel = VBoxContainer.new()
 	left_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	left_panel.offset_left = 24.0
@@ -413,6 +464,26 @@ func _unhandled_input(event: InputEvent) -> void:
 		pitch = clamp(pitch, deg_to_rad(-82.0), deg_to_rad(82.0))
 		rotation.y = yaw
 		head.rotation.x = pitch
+	if event is InputEventKey and event.keycode == KEY_Z and not run_finished and intro_lock_timer <= 0.0:
+		if event.pressed and not event.echo:
+			prone_key_active = true
+			if is_prone:
+				is_prone = false
+				prone_held_timer = 0.0
+		elif not event.pressed:
+			prone_key_active = false
+			prone_held_timer = 0.0
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE and not run_finished and intro_lock_timer <= 0.0:
+		wants_jump_this_frame = true
+		return
+	if InputBus.wants_inventory(event) and not run_finished:
+		inventory_open = not inventory_open
+		if inventory_detail_label:
+			inventory_detail_label.visible = inventory_open
+			if inventory_open:
+				inventory_detail_label.text = _build_inventory_text()
+		return
 	if event is InputEventKey and event.keycode == KEY_X and not event.echo and not run_finished and intro_lock_timer <= 0.0:
 		if event.pressed:
 			neural_anchor_active = true
@@ -476,8 +547,17 @@ func _physics_process(delta: float) -> void:
 			intro_message_active = false
 		return
 	var move_input = InputBus.get_move_vector()
-	is_crouching = InputBus.wants_crouch()
+	if not is_prone:
+		is_crouching = InputBus.wants_crouch()
 	stealth_focus = InputBus.wants_stealth_walk()
+	if prone_iframes > 0.0:
+		prone_iframes = max(0.0, prone_iframes - delta)
+	if prone_key_active and not is_prone and is_on_floor():
+		prone_held_timer += delta
+		if prone_held_timer >= 0.22:
+			_start_prone_dive()
+	elif not prone_key_active:
+		prone_held_timer = 0.0
 	var wish_dir = (global_transform.basis * Vector3(move_input.x, 0.0, move_input.y)).normalized()
 	var speed = _get_target_speed(move_input)
 	if carried_object:
@@ -489,7 +569,11 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= gravity * delta
 	else:
-		velocity.y = -0.05
+		if wants_jump_this_frame and not is_crouching and not is_prone:
+			velocity.y = jump_velocity
+		else:
+			velocity.y = -0.05
+	wants_jump_this_frame = false
 	move_and_slide()
 	_update_stamina(move_input, delta)
 	_update_crouch(delta)
@@ -511,6 +595,8 @@ func _process(delta: float) -> void:
 	_update_notice(delta)
 	_recover_recoil(delta)
 	_update_hit_bob(delta)
+	_update_barrel_crosshair()
+	_update_interact_prompt()
 
 func _update_cognitive_anchor(delta: float) -> void:
 	if not neural_anchor_active:
@@ -540,6 +626,8 @@ func _visible_to_any_enemy() -> bool:
 
 func _get_target_speed(move_input: Vector2) -> float:
 	var movement_penalty = health.get_movement_modifier() * health.get_stamina_modifier()
+	if is_prone:
+		return 1.1 * movement_penalty
 	if is_crouching:
 		return crouch_speed * movement_penalty
 	if stealth_focus:
@@ -556,10 +644,24 @@ func _update_stamina(move_input: Vector2, delta: float) -> void:
 		stamina = min(max_stamina, stamina + stamina_recovery * health.get_stamina_modifier() * delta)
 
 func _update_crouch(delta: float) -> void:
-	var target_head_y = 1.08 if is_crouching else 1.58
+	var target_head_y: float
+	var target_height: float
+	var target_col_y: float
+	if is_prone:
+		target_head_y = 0.28
+		target_height = 0.45
+		target_col_y = 0.28
+	elif is_crouching:
+		target_head_y = 1.08
+		target_height = 1.05
+		target_col_y = 0.62
+	else:
+		target_head_y = 1.58
+		target_height = 1.55
+		target_col_y = 0.86
 	head.position.y = lerp(head.position.y, target_head_y, delta * 10.0)
-	capsule_shape.height = lerp(capsule_shape.height, 1.05 if is_crouching else 1.55, delta * 10.0)
-	collision_shape.position.y = lerp(collision_shape.position.y, 0.62 if is_crouching else 0.86, delta * 10.0)
+	capsule_shape.height = lerp(capsule_shape.height, target_height, delta * 10.0)
+	collision_shape.position.y = lerp(collision_shape.position.y, target_col_y, delta * 10.0)
 
 func _emit_movement_noise(delta: float, move_input: Vector2, speed: float) -> void:
 	noise_timer -= delta
@@ -607,7 +709,8 @@ func _update_hud() -> void:
 	var glasses_online: bool = has_wearable_module("hud_glasses") and not glasses_power_empty
 	if glasses_lens_mesh:
 		glasses_lens_mesh.visible = glasses_online and glasses_lens_damage > 0.04
-	crosshair_label.visible = false
+	crosshair_center.visible = true
+	crosshair_barrel.visible = true
 	status_label.visible = true
 	inventory_label.visible = true
 	comms_label.visible = true
@@ -1641,3 +1744,106 @@ func _configure_intro_style(intro_style: String) -> void:
 
 func _on_health_died(reason: String) -> void:
 	died.emit(reason)
+
+func _start_prone_dive() -> void:
+	is_prone = true
+	prone_iframes = 0.55
+	prone_held_timer = 0.0
+	var forward = -global_transform.basis.z
+	velocity = forward * 5.2 + Vector3.UP * 0.7
+
+func _on_shot_fired(_projectile: BallisticProjectile) -> void:
+	_create_muzzle_flash()
+	_create_gunshot_smoke()
+
+func _create_muzzle_flash() -> void:
+	if not muzzle_marker or not is_instance_valid(muzzle_marker):
+		return
+	var flash = OmniLight3D.new()
+	flash.light_color = Color(1.0, 0.88, 0.55)
+	flash.light_energy = 0.0
+	flash.omni_range = 3.5
+	muzzle_marker.add_child(flash)
+	var tw = flash.create_tween()
+	tw.tween_property(flash, "light_energy", 3.8, 0.028)
+	tw.tween_property(flash, "light_energy", 0.0, 0.055)
+	tw.tween_callback(flash.queue_free)
+
+func _create_gunshot_smoke() -> void:
+	if not muzzle_marker or not is_instance_valid(muzzle_marker):
+		return
+	for i in range(3):
+		var puff = MeshInstance3D.new()
+		var sphere = SphereMesh.new()
+		sphere.radius = randf_range(0.028, 0.055)
+		sphere.height = sphere.radius * 2.0
+		puff.mesh = sphere
+		var mat = StandardMaterial3D.new()
+		mat.albedo_color = Color(0.72, 0.68, 0.62, 0.38)
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		puff.material_override = mat
+		puff.position = Vector3(randf_range(-0.04, 0.04), randf_range(-0.02, 0.02), randf_range(-0.05, 0.0))
+		muzzle_marker.add_child(puff)
+		var drift = Vector3(randf_range(-0.04, 0.04), randf_range(0.06, 0.12), randf_range(-0.08, 0.0))
+		var tw = puff.create_tween()
+		tw.set_parallel(true)
+		tw.tween_property(puff, "position", puff.position + drift, 0.36)
+		tw.tween_property(mat, "albedo_color:a", 0.0, 0.36)
+		tw.tween_callback(puff.queue_free).set_delay(0.36)
+
+func _update_barrel_crosshair() -> void:
+	if not crosshair_barrel or not camera or not muzzle_marker:
+		return
+	var muzzle_world = muzzle_marker.global_position
+	var forward = -camera.global_transform.basis.z
+	var barrel_far = muzzle_world + forward * 50.0
+	var screen_pos = camera.unproject_position(barrel_far)
+	var screen_center = get_viewport().get_visible_rect().size * 0.5
+	var delta_px = screen_pos - screen_center
+	crosshair_barrel.offset_left = delta_px.x - 14.0
+	crosshair_barrel.offset_right = delta_px.x + 14.0
+	crosshair_barrel.offset_top = delta_px.y - 14.0
+	crosshair_barrel.offset_bottom = delta_px.y + 14.0
+
+func _update_interact_prompt() -> void:
+	if not interact_prompt_label or not camera:
+		return
+	var from = camera.global_position
+	var to = from + (-camera.global_transform.basis.z) * 2.6
+	var query = PhysicsRayQueryParameters3D.create(from, to)
+	query.exclude = [get_rid()]
+	query.collision_mask = 1 | 2
+	var hit = get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		interact_prompt_label.text = ""
+		return
+	var collider = hit.get("collider")
+	if collider and collider.has_method("get_display_name"):
+		interact_prompt_label.text = "[E]  " + collider.get_display_name()
+	elif collider and "display_name" in collider and not collider.display_name.is_empty():
+		interact_prompt_label.text = "[E]  " + collider.display_name
+	else:
+		interact_prompt_label.text = ""
+
+func _build_inventory_text() -> String:
+	var lines: Array[String] = []
+	lines.append("── INVENTORY ──")
+	if weapon and weapon.data:
+		lines.append("WEAPON  %s  %s" % [weapon.data.weapon_name, _get_diegetic_ammo_display()])
+	else:
+		lines.append("WEAPON  none")
+	for slot in weapon_slots:
+		if slot.get("weapon_id", "") != "":
+			lines.append("  SLOT  %s" % slot.get("weapon_id", ""))
+	if resources.is_empty():
+		lines.append("SUPPLIES  empty")
+	else:
+		for key in resources:
+			lines.append("  %s  x%d" % [key.to_upper(), int(resources[key])])
+	if wearable_modules.is_empty():
+		lines.append("MODULES  none")
+	else:
+		for key in wearable_modules:
+			lines.append("  %s" % key.to_upper())
+	return "\n".join(lines)

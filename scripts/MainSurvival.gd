@@ -78,17 +78,19 @@ func _build_lighting() -> void:
 	environment.background_color = Color(0.015, 0.018, 0.024)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color(0.06, 0.085, 0.095)
-	environment.ambient_light_energy = 0.28
+	environment.ambient_light_energy = 0.22
 	environment.fog_enabled = true
-	environment.fog_density = 0.014
-	environment.fog_light_color = Color(0.16, 0.48, 0.52)
+	environment.fog_density = 0.038
+	environment.fog_light_color = Color(0.12, 0.38, 0.44)
+	environment.fog_aerial_perspective = 0.12
 	world_environment.environment = environment
 	add_child(world_environment)
 	var moon = DirectionalLight3D.new()
 	moon.name = "ColdDirectionalLight"
 	moon.rotation_degrees = Vector3(-55, -25, 0)
-	moon.light_energy = 0.32
-	moon.light_color = Color(0.58, 0.78, 0.9)
+	moon.light_energy = 0.28
+	moon.light_color = Color(0.48, 0.62, 0.82)
+	moon.shadow_enabled = true
 	add_child(moon)
 
 func _build_arena() -> void:
@@ -104,7 +106,6 @@ func _build_arena() -> void:
 	_create_box("SouthOuterWall", Vector3(0, 2.12, 36), Vector3(72, 4.28, 0.7), Color(0.16, 0.18, 0.2), true, "bulkhead")
 	_create_box("WestOuterWall", Vector3(-36, 2.12, 0), Vector3(0.7, 4.28, 72), Color(0.16, 0.18, 0.2), true, "bulkhead")
 	_create_box("EastOuterWall", Vector3(36, 2.12, 0), Vector3(0.7, 4.28, 72), Color(0.16, 0.18, 0.2), true, "bulkhead")
-	_create_station_trim()
 	var cover_specs: Array[Dictionary] = [
 		{"position": Vector3(-8, 0.75, -5), "size": Vector3(5, 1.5, 1.2)},
 		{"position": Vector3(8, 0.75, 4), "size": Vector3(5, 1.5, 1.2)},
@@ -274,8 +275,8 @@ func _create_warning_lights() -> void:
 		lights.append(light)
 		sector_lights["arena"] = lights
 	if sector_power:
-		sector_power.register_sector("arena", "Prototype Combat Arena", false)
-		_apply_sector_light_state("arena", false, "initial_outage")
+		sector_power.register_sector("arena", "Prototype Combat Arena", true)
+		_apply_sector_light_state("arena", true, "initial_power")
 
 func _create_ceiling_fixture(fixture_name: String, world_position: Vector3) -> void:
 	_create_box(fixture_name + "_Housing", world_position + Vector3(0.0, 0.16, 0.0), Vector3(1.55, 0.08, 0.34), Color(0.045, 0.055, 0.06), false)
@@ -1112,8 +1113,8 @@ func _apply_sector_light_state(sector_id: String, powered: bool, _method_id: Str
 		var omni = light as OmniLight3D
 		if not omni:
 			continue
-		omni.light_energy = 1.8 if powered else 0.18
-		omni.light_color = Color(0.1, 0.9, 0.82) if powered else Color(0.04, 0.13, 0.14)
+		omni.light_energy = 2.4 if powered else 0.12
+		omni.light_color = Color(0.62, 0.88, 0.92) if powered else Color(0.04, 0.08, 0.1)
 
 func _leave_solver_trace(trace_name: String, world_position: Vector3, color: Color) -> void:
 	if not arena_root:

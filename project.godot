@@ -16,7 +16,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 config/name="Perception Breach Prototype"
 config/description="A greybox FPS immersive sim survival horror prototype about escaping a persistent ruined station through lethal combat, scavenging, and cognitive corruption."
-run/main_scene="res://scenes/PrototypeArena.tscn"
+run/main_scene="res://scenes/Menu.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://assets/icons/icon.svg"
 
