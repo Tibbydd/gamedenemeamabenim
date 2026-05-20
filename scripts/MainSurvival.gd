@@ -91,6 +91,7 @@ func _build_lighting() -> void:
 	moon.light_energy = 0.28
 	moon.light_color = Color(0.48, 0.62, 0.82)
 	moon.shadow_enabled = true
+	moon.directional_shadow_max_distance = 80.0
 	add_child(moon)
 
 func _build_arena() -> void:
@@ -266,6 +267,7 @@ func _create_warning_lights() -> void:
 		light.light_color = Color(0.1, 0.9, 0.82)
 		light.light_energy = 2.1
 		light.omni_range = 8.5
+		light.shadow_enabled = true
 		light.position = point
 		arena_root.add_child(light)
 		var lights: Array = []

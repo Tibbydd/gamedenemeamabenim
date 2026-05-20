@@ -51,7 +51,6 @@ func _draw() -> void:
 	_draw_panel_backing()
 	_draw_silhouette()
 	_draw_wounds()
-	_draw_status_icons()
 	_draw_readout_line()
 
 func _draw_panel_backing() -> void:
@@ -135,12 +134,9 @@ func _draw_status_icons() -> void:
 
 func _draw_readout_line() -> void:
 	var font: Font = get_theme_default_font()
-	var font_size: int = 12
-	var grip: String = handling_state
-	if grip.length() > 18:
-		grip = grip.substr(0, 18)
-	var text: String = "STAM %d  BLOOD %d  %s" % [int(stamina_value), int(health.blood_volume) if health else 100, grip]
-	draw_string(font, Vector2(8.0, size.y - 8.0), text, HORIZONTAL_ALIGNMENT_LEFT, size.x - 16.0, font_size, Color(0.74, 1.0, 0.92))
+	var blood_val: int = int(health.blood_volume) if health else 100
+	draw_string(font, Vector2(4.0, size.y - 5.0), "BLD %d" % blood_val,
+		HORIZONTAL_ALIGNMENT_LEFT, size.x - 8.0, 10, Color(0.74, 1.0, 0.92, 0.82))
 
 func _draw_limb(start: Vector2, end: Vector2, color: Color, width: float) -> void:
 	draw_line(start + Vector2(1.5, 1.5) * draw_scale, end + Vector2(1.5, 1.5) * draw_scale, Color(0.0, 0.0, 0.0, 0.35), width * draw_scale + 2.0, true)

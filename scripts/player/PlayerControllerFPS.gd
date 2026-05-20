@@ -94,23 +94,22 @@ var prone_key_active: bool = false
 var inventory_open: bool = false
 
 var hud_layer: CanvasLayer
-var ammo_label: Label
-var body_label: Label
 var status_label: Label
-var inventory_label: Label
 var comms_label: Label
 var timer_label: Label
-var compass_label: Label
-var treatment_label: Label
-var crosshair_label: Label
-var crosshair_center: Label
-var crosshair_barrel: Label
 var interact_prompt_label: Label
 var inventory_detail_label: Label
 var end_label: Label
 var debug_label: Label
+var crosshair_label: Label
 var body_silhouette: BodySilhouetteHUD
 var corruption_overlay: ColorRect
+var weapon_hologram: WeaponHologramHUD
+var status_icons: StatusIconsHUD
+var crosshair_ctrl: CrosshairControl
+var glasses_overlay: GlassesOverlay
+var blood_bar: ColorRect
+var stamina_bar: ColorRect
 var debug_overlay_visible: bool = true
 
 func _ready() -> void:
@@ -352,28 +351,26 @@ func _build_hud() -> void:
 	hud_layer = CanvasLayer.new()
 	hud_layer.name = "PrototypeHUD"
 	add_child(hud_layer)
+
+	# Corruption vignette overlay
 	corruption_overlay = ColorRect.new()
 	corruption_overlay.color = Color(0.1, 0.8, 0.9, 0.0)
 	corruption_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	corruption_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.add_child(corruption_overlay)
-	crosshair_barrel = Label.new()
-	crosshair_barrel.text = "○"
-	crosshair_barrel.add_theme_font_size_override("font_size", 28)
-	crosshair_barrel.add_theme_color_override("font_color", Color(1.0, 0.85, 0.55, 0.72))
-	crosshair_barrel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	crosshair_barrel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	crosshair_barrel.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hud_layer.add_child(crosshair_barrel)
-	crosshair_center = Label.new()
-	crosshair_center.text = "○"
-	crosshair_center.add_theme_font_size_override("font_size", 14)
-	crosshair_center.add_theme_color_override("font_color", Color(0.82, 1.0, 0.92, 0.92))
-	crosshair_center.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	crosshair_center.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	crosshair_center.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	hud_layer.add_child(crosshair_center)
-	crosshair_label = crosshair_center
+
+	# Glasses lens effect (vignette + corner brackets + scanline)
+	glasses_overlay = GlassesOverlay.new()
+	glasses_overlay.name = "GlassesOverlay"
+	hud_layer.add_child(glasses_overlay)
+
+	# Dynamic crosshair
+	crosshair_ctrl = CrosshairControl.new()
+	crosshair_ctrl.name = "CrosshairControl"
+	hud_layer.add_child(crosshair_ctrl)
+	crosshair_label = Label.new()  # dummy kept so external code has a Label ref
+
+	# Interact prompt — center, below crosshair
 	interact_prompt_label = Label.new()
 	interact_prompt_label.text = ""
 	interact_prompt_label.add_theme_font_size_override("font_size", 17)
@@ -388,6 +385,8 @@ func _build_hud() -> void:
 	interact_prompt_label.offset_right = 220.0
 	interact_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	hud_layer.add_child(interact_prompt_label)
+
+	# TAB inventory panel — right side
 	inventory_detail_label = Label.new()
 	inventory_detail_label.text = ""
 	inventory_detail_label.add_theme_font_size_override("font_size", 16)
@@ -402,36 +401,89 @@ func _build_hud() -> void:
 	inventory_detail_label.offset_bottom = 300.0
 	inventory_detail_label.visible = false
 	hud_layer.add_child(inventory_detail_label)
-	var left_panel = VBoxContainer.new()
-	left_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	left_panel.offset_left = 24.0
-	left_panel.offset_top = 18.0
-	left_panel.offset_right = 760.0
-	left_panel.offset_bottom = 760.0
-	hud_layer.add_child(left_panel)
-	status_label = _make_hud_label("COGNITIVE LINK: STABLE  0%")
-	inventory_label = _make_hud_label("LOADOUT: UNKNOWN")
-	comms_label = _make_hud_label("COMMS: NO EARPIECE")
-	timer_label = _make_hud_label("STATION TIME: 00:00")
-	compass_label = _make_hud_label("COMPASS: --")
-	ammo_label = _make_hud_label("M-7: 12 / 48")
-	body_label = _make_hud_label("")
+
+	# Weapon hologram — beside weapon, center-right
+	weapon_hologram = WeaponHologramHUD.new()
+	weapon_hologram.name = "WeaponHologram"
+	hud_layer.add_child(weapon_hologram)
+	weapon.ammo_changed.connect(_on_weapon_ammo_changed)
+	weapon.condition_changed.connect(_on_weapon_condition_changed_hud)
+
+	# Status icons — bottom-center
+	status_icons = StatusIconsHUD.new()
+	status_icons.name = "StatusIconsHUD"
+	hud_layer.add_child(status_icons)
+
+	# Body silhouette — bottom-left, small Tarkov-style
 	body_silhouette = BodySilhouetteHUD.new()
 	body_silhouette.name = "BodySilhouetteHUD"
-	body_silhouette.custom_minimum_size = Vector2(190.0, 270.0)
-	treatment_label = _make_hud_label("")
+	body_silhouette.custom_minimum_size = Vector2(90.0, 135.0)
+	body_silhouette.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	body_silhouette.offset_left = 16.0
+	body_silhouette.offset_right = 106.0
+	body_silhouette.offset_top = -151.0
+	body_silhouette.offset_bottom = -16.0
+	hud_layer.add_child(body_silhouette)
+
+	# Thin vertical vitals bars beside the silhouette
+	blood_bar = ColorRect.new()
+	blood_bar.color = Color(0.82, 0.08, 0.08, 0.78)
+	blood_bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	blood_bar.offset_left = 112.0
+	blood_bar.offset_right = 116.0
+	blood_bar.offset_bottom = -16.0
+	blood_bar.offset_top = -96.0
+	hud_layer.add_child(blood_bar)
+	stamina_bar = ColorRect.new()
+	stamina_bar.color = Color(0.72, 0.88, 0.22, 0.72)
+	stamina_bar.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	stamina_bar.offset_left = 120.0
+	stamina_bar.offset_right = 124.0
+	stamina_bar.offset_bottom = -16.0
+	stamina_bar.offset_top = -96.0
+	hud_layer.add_child(stamina_bar)
+
+	# Status text — top-left (minimal: contamination status + time)
+	status_label = _make_hud_label("")
+	status_label.add_theme_font_size_override("font_size", 13)
+	status_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	status_label.offset_left = 22.0
+	status_label.offset_top = 18.0
+	status_label.offset_right = 480.0
+	status_label.offset_bottom = 38.0
+	hud_layer.add_child(status_label)
+
+	timer_label = _make_hud_label("")
+	timer_label.add_theme_font_size_override("font_size", 13)
+	timer_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	timer_label.offset_left = 22.0
+	timer_label.offset_top = 34.0
+	timer_label.offset_right = 340.0
+	timer_label.offset_bottom = 54.0
+	hud_layer.add_child(timer_label)
+
+	comms_label = _make_hud_label("")
+	comms_label.add_theme_font_size_override("font_size", 13)
+	comms_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	comms_label.offset_left = -380.0
+	comms_label.offset_top = 18.0
+	comms_label.offset_right = -20.0
+	comms_label.offset_bottom = 54.0
+	comms_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	hud_layer.add_child(comms_label)
+
+	# Debug overlay — top-left below status
 	debug_label = _make_hud_label("")
-	left_panel.add_child(status_label)
-	left_panel.add_child(inventory_label)
-	left_panel.add_child(comms_label)
-	left_panel.add_child(timer_label)
-	left_panel.add_child(compass_label)
-	left_panel.add_child(ammo_label)
-	left_panel.add_child(body_silhouette)
-	left_panel.add_child(body_label)
-	left_panel.add_child(treatment_label)
-	left_panel.add_child(debug_label)
-	debug_label.visible = true
+	debug_label.add_theme_font_size_override("font_size", 13)
+	debug_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	debug_label.offset_left = 22.0
+	debug_label.offset_top = 52.0
+	debug_label.offset_right = 760.0
+	debug_label.offset_bottom = 400.0
+	debug_label.visible = false
+	hud_layer.add_child(debug_label)
+
+	# End state label — screen center
 	end_label = _make_hud_label("")
 	end_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	end_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -442,6 +494,7 @@ func _build_hud() -> void:
 	end_label.offset_top = -120.0
 	end_label.offset_bottom = 120.0
 	hud_layer.add_child(end_label)
+
 	mental.setup(camera, corruption_overlay, status_label)
 	comms.setup(mental, comms_label)
 
@@ -500,6 +553,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 		elif event.keycode == KEY_ENTER:
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		elif event.keycode == KEY_G and not run_finished and intro_lock_timer <= 0.0:
+			if flashlight:
+				flashlight.visible = not flashlight.visible
 		elif InputBus.wants_debug_overlay(event):
 			debug_overlay_visible = true
 			debug_label.visible = true
@@ -517,6 +573,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_equip_weapon_slot(_weapon_slot_from_event(event))
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_reload(event):
 			weapon.start_reload()
+			AudioRouter.play_ui("reload_click")
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_quick_bandage(event):
 			_try_quick_bleed_control()
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_trauma_kit(event):
@@ -704,59 +761,26 @@ func _get_surface_id_underfoot() -> String:
 	return "deck"
 
 func _update_hud() -> void:
-	if not ammo_label:
+	if not status_label:
 		return
-	var glasses_online: bool = has_wearable_module("hud_glasses") and not glasses_power_empty
 	if glasses_lens_mesh:
-		glasses_lens_mesh.visible = glasses_online and glasses_lens_damage > 0.04
-	crosshair_center.visible = true
-	crosshair_barrel.visible = true
-	status_label.visible = true
-	inventory_label.visible = true
-	comms_label.visible = true
-	timer_label.visible = true
-	compass_label.visible = true
-	ammo_label.visible = true
-	body_label.visible = true
-	treatment_label.visible = true
+		glasses_lens_mesh.visible = glasses_lens_damage > 0.04
 	if body_silhouette:
-		body_silhouette.visible = true
 		body_silhouette.update_status(health, stamina, health.get_weapon_handling_state())
+	if status_icons:
+		status_icons.update_status(health, mental.corruption if mental else 0.0)
 	if not weapon or not weapon.data:
 		_force_weapon_ready(equipped_weapon_id)
-	if weapon and weapon.data:
-		ammo_label.text = "%s: %s" % [weapon.data.weapon_name, _get_diegetic_ammo_display()]
-	else:
-		ammo_label.text = "NO WEAPON"
-	var body_text: String = "VITALS  STAM %d  BLOOD %d  PAIN %d  SHOCK %d\n" % [int(stamina), int(health.blood_volume), int(health.pain), int(health.shock)]
-	if health.bleed_rate > 0.0:
-		body_text += "BLEED %.1f/s  " % health.bleed_rate
-	if health.burn_time > 0.0:
-		body_text += "BURN %.0fs  " % health.burn_time
-	if health.stimulant_time > 0.0:
-		body_text += "STIM %.0fs  " % health.stimulant_time
-	if has_wearable_module("sound_meter"):
-		body_text += "SOUND %s  " % _get_estimated_noise_readout()
-	if glasses_power_load > 3.0:
-		body_text += "FRAME %.1fU  " % glasses_power_load
-	if glasses_lens_damage > 0.15:
-		body_text += "LENS %.0f%%  " % (glasses_lens_damage * 100.0)
-	body_label.text = body_text
-	if health.active_treatment.is_empty():
-		var foul_text: String = "   BARREL FOULED" if barrel_obstruction > 0.55 else ""
-		var stealth_text: String = "   STEALTH STEP" if stealth_focus else ""
-		var build_text: String = ""
-		if build_system:
-			build_text = "   G %s   C NEXT" % build_system.get_selected_status()
-		var anchor_text: String = "   X TAP/HOLD"
-		if neural_anchor_active:
-			anchor_text = "   X HOLD %.0f%%" % (neural_anchor_time / neural_anchor_required * 100.0)
-		var carry_text: String = "   CARRYING" if carried_object else ""
-		treatment_label.text = "E USE   LMB FIRE   R RELOAD   1-3 WEAPONS   F SHOVE/THROW   H MAG CHECK   I INSPECT   B BANDAGE   T TRAUMA   V INJECT" + anchor_text + build_text + foul_text + stealth_text + carry_text
-	else:
-		treatment_label.text = "TREATING: %s %.1fs" % [health.active_treatment.to_upper(), health.treatment_time_left]
-	inventory_label.text = _get_inventory_summary()
-	compass_label.text = _get_compass_summary()
+	_refresh_weapon_hologram()
+	# Vitals bars — scale height proportional to blood/stamina
+	var bar_full_h := 80.0
+	if blood_bar:
+		var blood_ratio := clamp(health.blood_volume / 100.0, 0.0, 1.0)
+		blood_bar.offset_top = blood_bar.offset_bottom - bar_full_h * blood_ratio
+	if stamina_bar:
+		var stam_ratio := clamp(stamina / max_stamina, 0.0, 1.0)
+		stamina_bar.offset_top = stamina_bar.offset_bottom - bar_full_h * stam_ratio
+	_update_crosshair_spread()
 
 func _get_diegetic_ammo_display() -> String:
 	if not mental or mental.corruption < 70.0:
@@ -927,7 +951,7 @@ func _try_interact() -> void:
 func apply_survivor_loadout(loadout: Dictionary) -> void:
 	survivor_loadout = loadout.duplicate(true)
 	has_headset = bool(survivor_loadout.get("has_headset", false))
-	flashlight_type = String(survivor_loadout.get("flashlight", "none"))
+	flashlight_type = String(survivor_loadout.get("flashlight", "handheld"))
 	wearable_modules.clear()
 	wearable_slots.clear()
 	glasses_power_empty = false
@@ -1174,6 +1198,7 @@ func _setup_flashlight(new_type: String) -> void:
 	flashlight.spot_range = 17.0
 	flashlight.spot_angle = 28.0
 	flashlight.light_energy = 2.2
+	flashlight.shadow_enabled = true
 	if new_type == "handheld":
 		flashlight.position = Vector3(0.26, -0.22, -0.28)
 		flashlight.rotation_degrees = Vector3(-2.0, 0.0, 0.0)
@@ -1632,30 +1657,30 @@ func _reinstall_known_cross_weapon_attachments() -> void:
 			weapon.install_attachment(String(attachment_id))
 
 func _on_weapon_recoil_requested(pitch_radians: float, yaw_radians: float, rearward_kick: float) -> void:
-	var pitch_kick = pitch_radians * recoil_trait_modifier
-	var yaw_kick = yaw_radians * recoil_trait_modifier
-	pitch = clamp(pitch + pitch_kick * 0.72, deg_to_rad(-82.0), deg_to_rad(82.0))
-	yaw += yaw_kick * 0.35
+	var pitch_kick := pitch_radians * recoil_trait_modifier
+	var yaw_kick := yaw_radians * recoil_trait_modifier
+	pitch = clamp(pitch + pitch_kick * 1.6, deg_to_rad(-82.0), deg_to_rad(82.0))
+	yaw += yaw_kick * 0.75
 	rotation.y = yaw
 	head.rotation.x = pitch
-	recoil_recovery_pitch_remaining += pitch_kick * 0.32
-	recoil_recovery_yaw_remaining += yaw_kick * 0.18
-	weapon_kick_offset += Vector3(0.0, rearward_kick * 0.1, rearward_kick)
-	weapon_kick_rotation += Vector3(pitch_kick * 2.4, yaw_kick * 1.6, -yaw_kick * 1.2)
+	recoil_recovery_pitch_remaining += pitch_kick * 0.68
+	recoil_recovery_yaw_remaining += yaw_kick * 0.42
+	weapon_kick_offset += Vector3(0.0, rearward_kick * 0.18, rearward_kick * 1.4)
+	weapon_kick_rotation += Vector3(pitch_kick * 4.2, yaw_kick * 2.8, -yaw_kick * 2.2)
 
 func _recover_recoil(delta: float) -> void:
 	if recoil_recovery_pitch_remaining > 0.0001:
-		var pitch_recovery: float = min(recoil_recovery_pitch_remaining, delta * 0.55)
+		var pitch_recovery: float = min(recoil_recovery_pitch_remaining, delta * 0.72)
 		pitch = clamp(pitch - pitch_recovery, deg_to_rad(-82.0), deg_to_rad(82.0))
 		head.rotation.x = pitch
 		recoil_recovery_pitch_remaining -= pitch_recovery
 	if abs(recoil_recovery_yaw_remaining) > 0.0001:
-		var yaw_recovery: float = sign(recoil_recovery_yaw_remaining) * min(abs(recoil_recovery_yaw_remaining), delta * 0.28)
+		var yaw_recovery: float = sign(recoil_recovery_yaw_remaining) * min(abs(recoil_recovery_yaw_remaining), delta * 0.38)
 		yaw -= yaw_recovery
 		rotation.y = yaw
 		recoil_recovery_yaw_remaining -= yaw_recovery
-	weapon_kick_offset = weapon_kick_offset.move_toward(Vector3.ZERO, delta * 0.45)
-	weapon_kick_rotation = weapon_kick_rotation.move_toward(Vector3.ZERO, delta * 2.8)
+	weapon_kick_offset = weapon_kick_offset.move_toward(Vector3.ZERO, delta * 0.38)
+	weapon_kick_rotation = weapon_kick_rotation.move_toward(Vector3.ZERO, delta * 2.2)
 
 func _on_weapon_condition_changed(condition: float) -> void:
 	if not weapon_pivot:
@@ -1755,6 +1780,12 @@ func _start_prone_dive() -> void:
 func _on_shot_fired(_projectile: BallisticProjectile) -> void:
 	_create_muzzle_flash()
 	_create_gunshot_smoke()
+	if crosshair_ctrl:
+		crosshair_ctrl.notify_fired()
+	var muzzle_pos := muzzle_marker.global_position if muzzle_marker else global_position
+	var family := weapon.data.weapon_family if weapon and weapon.data else ""
+	var shot_id := "gunshot_thermal" if family == "thermal" else ("gunshot_heavy" if family in ["lmg", "launcher"] else "gunshot_light")
+	AudioRouter.play_3d(shot_id, muzzle_pos)
 
 func _create_muzzle_flash() -> void:
 	if not muzzle_marker or not is_instance_valid(muzzle_marker):
@@ -1793,18 +1824,14 @@ func _create_gunshot_smoke() -> void:
 		tw.tween_callback(puff.queue_free).set_delay(0.36)
 
 func _update_barrel_crosshair() -> void:
-	if not crosshair_barrel or not camera or not muzzle_marker:
+	if not crosshair_ctrl or not camera or not muzzle_marker:
 		return
-	var muzzle_world = muzzle_marker.global_position
-	var forward = -camera.global_transform.basis.z
-	var barrel_far = muzzle_world + forward * 50.0
-	var screen_pos = camera.unproject_position(barrel_far)
-	var screen_center = get_viewport().get_visible_rect().size * 0.5
-	var delta_px = screen_pos - screen_center
-	crosshair_barrel.offset_left = delta_px.x - 14.0
-	crosshair_barrel.offset_right = delta_px.x + 14.0
-	crosshair_barrel.offset_top = delta_px.y - 14.0
-	crosshair_barrel.offset_bottom = delta_px.y + 14.0
+	var muzzle_world := muzzle_marker.global_position
+	var forward := -camera.global_transform.basis.z
+	var barrel_far := muzzle_world + forward * 50.0
+	var screen_pos := camera.unproject_position(barrel_far)
+	var screen_center := get_viewport().get_visible_rect().size * 0.5
+	crosshair_ctrl.barrel_offset = screen_pos - screen_center
 
 func _update_interact_prompt() -> void:
 	if not interact_prompt_label or not camera:
@@ -1821,8 +1848,10 @@ func _update_interact_prompt() -> void:
 	var collider = hit.get("collider")
 	if collider and collider.has_method("get_display_name"):
 		interact_prompt_label.text = "[E]  " + collider.get_display_name()
-	elif collider and "display_name" in collider and not collider.display_name.is_empty():
-		interact_prompt_label.text = "[E]  " + collider.display_name
+	elif collider and "display_name" in collider and not str(collider.display_name).is_empty():
+		interact_prompt_label.text = "[E]  " + str(collider.display_name)
+	elif collider and collider.has_meta("display_name"):
+		interact_prompt_label.text = "[E]  " + str(collider.get_meta("display_name"))
 	else:
 		interact_prompt_label.text = ""
 
@@ -1847,3 +1876,38 @@ func _build_inventory_text() -> String:
 		for key in wearable_modules:
 			lines.append("  %s" % key.to_upper())
 	return "\n".join(lines)
+
+func _on_weapon_ammo_changed(_current: int, _reserve: int) -> void:
+	_refresh_weapon_hologram()
+
+func _on_weapon_condition_changed_hud(_condition: float) -> void:
+	_refresh_weapon_hologram()
+
+func _refresh_weapon_hologram() -> void:
+	if not weapon_hologram:
+		return
+	if weapon and weapon.data:
+		weapon_hologram.refresh(
+			weapon.data.weapon_name,
+			weapon.current_ammo,
+			weapon.reserve_ammo,
+			weapon.weapon_condition,
+			weapon.data.weapon_family,
+			weapon.is_reloading
+		)
+	else:
+		weapon_hologram.refresh("", 0, 0, 1.0, "", false)
+
+func _update_crosshair_spread() -> void:
+	if not crosshair_ctrl:
+		return
+	var base_spread := 0.0
+	if weapon and weapon.data:
+		base_spread = weapon.data.spread_degrees * 9.0
+	var vel_xz := Vector2(velocity.x, velocity.z).length()
+	var max_speed := sprint_speed if sprint_speed > 0.0 else 8.0
+	var speed_spread := (vel_xz / max_speed) * 18.0
+	var air_spread := 22.0 if not is_on_floor() else 0.0
+	var stance_reduction := 10.0 if is_prone else (6.0 if is_crouching else 0.0)
+	var target := base_spread + speed_spread + air_spread - stance_reduction
+	crosshair_ctrl.spread_px = lerp(crosshair_ctrl.spread_px, max(4.0, target), get_process_delta_time() * 8.0)

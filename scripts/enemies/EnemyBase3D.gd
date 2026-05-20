@@ -299,14 +299,31 @@ func die(_cause: String) -> void:
 		GameEvents.request_sound("howler_death", global_position, 1.0)
 	else:
 		GameEvents.request_sound("enemy_death", global_position, 0.8)
+	# Stop all AI processing
+	set_process(false)
+	set_physics_process(false)
+	if brain:
+		brain.set_process(false)
+	if navigation_agent:
+		navigation_agent.set_process(false)
+	# Remove hit zones and combat collision
 	collision_layer = 0
-	collision_mask = 0
+	collision_mask = 1  # keep world collision so body rests on floor
 	for child in get_children():
 		if child is EnemyHitZone3D:
 			child.collision_layer = 0
+			child.collision_mask = 0
+	# Mark as interactable corpse
+	if not has_meta("display_name"):
+		set_meta("display_name", "CORPSE — " + archetype_id.replace("_", " ").to_upper())
+	# Animate collapse: tip over and settle on ground
+	var fall_dir := randf_range(-1.0, 1.0)
 	var tween := create_tween()
-	tween.tween_property(self, "scale", Vector3(1.0, 0.08, 1.0), 0.25)
-	tween.tween_callback(queue_free)
+	tween.set_parallel(true)
+	tween.tween_property(self, "rotation_degrees:z",
+		rotation_degrees.z + fall_dir * randf_range(72.0, 95.0), 0.28).set_ease(Tween.EASE_IN)
+	tween.tween_property(self, "position:y",
+		position.y - 0.55, 0.28).set_ease(Tween.EASE_IN)
 
 func _build_physics_body() -> void:
 	collision_layer = 2

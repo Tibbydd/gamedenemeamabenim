@@ -24,6 +24,8 @@ config/icon="res://assets/icons/icon.svg"
 
 GameEvents="*res://scripts/core/GameEvents.gd"
 InputBus="*res://scripts/core/InputBus.gd"
+SoundSynthesizer="*res://scripts/core/SoundSynthesizer.gd"
+AudioRouter="*res://scripts/core/AudioRouter.gd"
 
 [debug]
 
