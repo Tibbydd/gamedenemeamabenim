@@ -481,6 +481,12 @@ func _get_effective_reload_time() -> float:
 		reload *= 1.15
 	if has_attachment("quickpull_magwell"):
 		reload *= 0.82
+	if owner_body:
+		var raw_loadout: Variant = owner_body.get("survivor_loadout")
+		if raw_loadout is Dictionary:
+			var loadout: Dictionary = raw_loadout
+			var reload_speed: float = float(loadout.get("reload_speed_mult", 1.0))
+			reload /= max(0.25, reload_speed)
 	return reload
 
 func _get_effective_loudness() -> float:

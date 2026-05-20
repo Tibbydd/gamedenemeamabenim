@@ -73,7 +73,7 @@ func _apply_placeholder_effects(delta: float) -> void:
 	if overlay:
 		overlay.color.a = clamp(amount * 0.32 + randf() * amount * 0.08, 0.0, 0.42)
 	if status_label:
-		status_label.text = "COGNITIVE LINK: %s  %d%%" % [get_status_suffix(), int(corruption)]
+		status_label.text = "CONTAM LINK: %s  %d%%" % [get_status_suffix(), int(corruption)]
 		status_label.modulate.a = 0.65 + sin(Time.get_ticks_msec() * 0.01) * amount * 0.35
 
 func _update_audio_hallucinations(delta: float) -> void:

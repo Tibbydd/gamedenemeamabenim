@@ -9,6 +9,7 @@ var force_work: float = 0.0
 var mesh_instance: MeshInstance3D
 var collision_shape: CollisionShape3D
 var lock_housing: DoorLockHousing3D
+var open_animation_started: bool = false
 
 func configure_door(new_door_id: String, initial_state: String, size: Vector3, color: Color) -> void:
 	door_id = new_door_id
@@ -17,11 +18,41 @@ func configure_door(new_door_id: String, initial_state: String, size: Vector3, c
 	set_state(initial_state)
 
 func set_state(new_state: String) -> void:
+	var previous_state: String = state
 	state = new_state
-	if collision_shape:
-		collision_shape.disabled = state == FacilityProgression.DOOR_OPEN
-	collision_layer = 0 if state == FacilityProgression.DOOR_OPEN else 1
+	if state == FacilityProgression.DOOR_OPEN:
+		if previous_state != FacilityProgression.DOOR_OPEN:
+			_start_open_animation()
+		else:
+			_finish_open_state()
+	else:
+		open_animation_started = false
+		if mesh_instance:
+			mesh_instance.scale = Vector3.ONE
+		if collision_shape:
+			collision_shape.disabled = false
+		collision_layer = 1
 	_update_door_visual()
+
+func _start_open_animation() -> void:
+	if open_animation_started:
+		return
+	open_animation_started = true
+	collision_layer = 1
+	if collision_shape:
+		collision_shape.disabled = false
+	if not mesh_instance:
+		_finish_open_state()
+		return
+	AudioRouter.play_3d("interact", global_position)
+	var tween: Tween = create_tween()
+	tween.tween_property(mesh_instance, "scale:y", 0.0, 0.55).set_ease(Tween.EASE_IN)
+	tween.tween_callback(Callable(self, "_finish_open_state"))
+
+func _finish_open_state() -> void:
+	if collision_shape:
+		collision_shape.disabled = true
+	collision_layer = 0
 
 func receive_generic_hit(damage: float, hit_position: Vector3, hit_direction: Vector3) -> void:
 	super.receive_generic_hit(damage, hit_position, hit_direction)

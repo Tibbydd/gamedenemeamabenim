@@ -37,6 +37,10 @@ var resources: Dictionary = {}
 var weapon_slots: Array[Dictionary] = []
 var equipped_weapon_slot: int = 0
 var carry_capacity: int = 18
+var selected_role: String = "breacher"
+var reload_speed_mult: float = 1.0
+var movement_penalty_mult: float = 1.0
+var can_revive_corpses: bool = false
 var wearable_modules: Dictionary = {}
 var wearable_slots: Dictionary = {}
 var has_headset: bool = false
@@ -108,6 +112,7 @@ var weapon_hologram: WeaponHologramHUD
 var status_icons: StatusIconsHUD
 var crosshair_ctrl: CrosshairControl
 var glasses_overlay: GlassesOverlay
+var objective_tracker: ObjectiveTrackerHUD
 var blood_bar: ColorRect
 var stamina_bar: ColorRect
 var debug_overlay_visible: bool = true
@@ -462,6 +467,16 @@ func _build_hud() -> void:
 	timer_label.offset_bottom = 54.0
 	hud_layer.add_child(timer_label)
 
+	objective_tracker = ObjectiveTrackerHUD.new()
+	objective_tracker.name = "ObjectiveTrackerHUD"
+	objective_tracker.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	objective_tracker.offset_left = 22.0
+	objective_tracker.offset_top = 58.0
+	objective_tracker.offset_right = 452.0
+	objective_tracker.offset_bottom = 178.0
+	hud_layer.add_child(objective_tracker)
+	_connect_objective_events()
+
 	comms_label = _make_hud_label("")
 	comms_label.add_theme_font_size_override("font_size", 13)
 	comms_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -477,7 +492,7 @@ func _build_hud() -> void:
 	debug_label.add_theme_font_size_override("font_size", 13)
 	debug_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
 	debug_label.offset_left = 22.0
-	debug_label.offset_top = 52.0
+	debug_label.offset_top = 184.0
 	debug_label.offset_right = 760.0
 	debug_label.offset_bottom = 400.0
 	debug_label.visible = false
@@ -508,6 +523,29 @@ func _make_hud_label(text_value: String) -> Label:
 	label.add_theme_constant_override("shadow_offset_x", 2)
 	label.add_theme_constant_override("shadow_offset_y", 2)
 	return label
+
+func _connect_objective_events() -> void:
+	var assigned_callable: Callable = Callable(self, "_on_objectives_assigned")
+	if not GameEvents.objectives_assigned.is_connected(assigned_callable):
+		GameEvents.objectives_assigned.connect(assigned_callable)
+	var updated_callable: Callable = Callable(self, "_on_objectives_updated")
+	if not GameEvents.objectives_updated.is_connected(updated_callable):
+		GameEvents.objectives_updated.connect(updated_callable)
+	var extraction_callable: Callable = Callable(self, "_on_extraction_available")
+	if not GameEvents.extraction_available.is_connected(extraction_callable):
+		GameEvents.extraction_available.connect(extraction_callable)
+
+func _on_objectives_assigned(objectives: Array) -> void:
+	if objective_tracker:
+		objective_tracker.set_objectives(objectives)
+
+func _on_objectives_updated(objectives: Array) -> void:
+	if objective_tracker:
+		objective_tracker.set_objectives(objectives)
+
+func _on_extraction_available(world_position: Vector3) -> void:
+	if objective_tracker:
+		objective_tracker.set_extraction_available(world_position)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and not run_finished:
@@ -690,7 +728,7 @@ func _get_target_speed(move_input: Vector2) -> float:
 	if stealth_focus:
 		return walk_speed * 0.48 * movement_penalty
 	if InputBus.wants_sprint() and stamina > 1.0 and move_input.length() > 0.1:
-		return sprint_speed * movement_penalty
+		return sprint_speed * movement_penalty * movement_penalty_mult
 	return walk_speed * movement_penalty
 
 func _update_stamina(move_input: Vector2, delta: float) -> void:
@@ -769,6 +807,9 @@ func _update_hud() -> void:
 		body_silhouette.update_status(health, stamina, health.get_weapon_handling_state())
 	if status_icons:
 		status_icons.update_status(health, mental.corruption if mental else 0.0)
+	if objective_tracker:
+		objective_tracker.set_player_position(global_position)
+	_update_contamination_fog()
 	if not weapon or not weapon.data:
 		_force_weapon_ready(equipped_weapon_id)
 	_refresh_weapon_hologram()
@@ -789,6 +830,18 @@ func _get_diegetic_ammo_display() -> String:
 		var false_count: int = max(0, weapon.current_ammo + randi_range(-3, 3))
 		return "%d / %d" % [false_count, weapon.reserve_ammo]
 	return weapon.get_ammo_display()
+
+func _update_contamination_fog() -> void:
+	if not mental:
+		return
+	var world_env_node: Node = get_tree().get_first_node_in_group("world_env")
+	if not (world_env_node is WorldEnvironment):
+		return
+	var world_environment: WorldEnvironment = world_env_node as WorldEnvironment
+	if not world_environment.environment:
+		return
+	var base_fog: float = 0.038
+	world_environment.environment.fog_density = base_fog + (mental.corruption / 100.0) * 0.06
 
 func _get_estimated_noise_readout() -> String:
 	var value = _get_surface_noise_modifier()
@@ -816,7 +869,7 @@ func _update_debug_overlay() -> void:
 			str(weapon_dropped),
 			str(weapon_pivot and weapon_pivot.visible)
 		]
-	debug_label.text = "DEBUG\nCORR %.0f  BLEED %.1f  ENEMIES %d\nWPN %s\n%s" % [
+	debug_label.text = "DEBUG\nCONTAM %.0f  BLEED %.1f  ENEMIES %d\nWPN %s\n%s" % [
 		mental.corruption if mental else 0.0,
 		health.bleed_rate if health else 0.0,
 		enemy_lines.size(),
@@ -903,7 +956,8 @@ func _try_shove() -> void:
 	GameEvents.request_sound("interact", global_position, 0.9)
 	var shoved = false
 	var forward = -camera.global_transform.basis.z
-	GameEvents.emit_environment_impulse(camera.global_position + forward * 1.0, 1.55, 9.0, self, "player_shove")
+	var melee_multiplier: float = _get_melee_multiplier()
+	GameEvents.emit_environment_impulse(camera.global_position + forward * 1.0, 1.55, 9.0 * melee_multiplier, self, "player_shove")
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not (enemy is Node3D):
 			continue
@@ -914,10 +968,15 @@ func _try_shove() -> void:
 		if forward.dot(to_enemy.normalized()) < 0.25:
 			continue
 		if enemy.has_method("apply_shove"):
-			enemy.apply_shove(global_position, 7.5, 0.55)
+			enemy.apply_shove(global_position, 7.5 * melee_multiplier, 0.55)
 			shoved = true
 	if shoved:
 		weapon_pivot.position += Vector3(0.0, 0.06, 0.08)
+
+func _get_melee_multiplier() -> float:
+	if int(resources.get("melee_amp", 0)) > 0:
+		return 1.4
+	return 1.0
 
 func _try_interact() -> void:
 	if carried_object:
@@ -942,14 +1001,38 @@ func _try_interact() -> void:
 	if collider is DynamicObject3D and not (collider is EquipmentPickup3D) and not (collider is LostSurvivorKit3D):
 		_start_carry_object(collider as DynamicObject3D)
 		return
+	if _try_revive_corpse(collider):
+		return
 	if collider and collider.has_method("use"):
 		collider.use(self)
 		GameEvents.request_sound("interact", hit_position, 0.65)
 	else:
 		GameEvents.emit_environment_impulse(hit_position, 0.8, 2.5, self, "use_push")
 
+func _try_revive_corpse(collider: Variant) -> bool:
+	if not can_revive_corpses or not collider or not (collider is EnemyBase3D):
+		return false
+	var enemy: EnemyBase3D = collider as EnemyBase3D
+	if not enemy.dead or not enemy.has_meta("display_name"):
+		return false
+	var display_value: String = String(enemy.get_meta("display_name"))
+	if display_value.find("CORPSE") < 0:
+		return false
+	if not enemy.has_method("revive_from_corpse"):
+		return false
+	if int(resources.get("trauma_kit", 0)) > 0:
+		consume_resource("trauma_kit", 1)
+	enemy.revive_from_corpse()
+	GameEvents.request_sound("interact", enemy.global_position, 0.9)
+	_show_diegetic_notice("REVIVE SHOCK\nCorpse is moving again.", 1.6)
+	return true
+
 func apply_survivor_loadout(loadout: Dictionary) -> void:
 	survivor_loadout = loadout.duplicate(true)
+	selected_role = String(survivor_loadout.get("role", selected_role))
+	reload_speed_mult = float(survivor_loadout.get("reload_speed_mult", 1.0))
+	movement_penalty_mult = float(survivor_loadout.get("movement_penalty_mult", 1.0))
+	can_revive_corpses = bool(survivor_loadout.get("can_revive_corpses", false))
 	has_headset = bool(survivor_loadout.get("has_headset", false))
 	flashlight_type = String(survivor_loadout.get("flashlight", "handheld"))
 	wearable_modules.clear()
@@ -1227,8 +1310,6 @@ func _get_inventory_summary() -> String:
 	var comms_text = "EARPIECE" if has_headset else "NO COMMS"
 	var weapon_text = weapon.data.weapon_family.to_upper() if weapon and weapon.data else "NO WEAPON"
 	var resource_count: int = _get_carried_units()
-	for key in resources.keys():
-		pass
 	var route_noise = ""
 	if mental and mental.corruption >= 70.0 and randf() < 0.08:
 		route_noise = " / DOOR STATE: OPEN?"

@@ -10,6 +10,12 @@ signal environment_impulse_made(position: Vector3, radius: float, force: float, 
 signal sound_requested(sound_id: String, position: Vector3, intensity: float)
 signal enemy_sighting_reported(position: Vector3, source: Node, radius: float)
 signal visibility_haze_requested(position: Vector3, radius: float, duration: float, strength: float)
+signal objectives_assigned(objectives: Array)
+signal objectives_updated(objectives: Array)
+signal objective_triggered(objective_id: String, objective_type: String, sector_id: String, position: Vector3)
+signal objective_completed(objective_id: String, objective_type: String, sector_id: String, position: Vector3)
+signal all_objectives_completed
+signal extraction_available(position: Vector3)
 
 var run_active: bool = false
 var run_success: bool = false
@@ -55,3 +61,22 @@ func report_enemy_sighting(position: Vector3, source: Node, radius: float = 12.0
 
 func request_visibility_haze(position: Vector3, radius: float, duration: float, strength: float) -> void:
 	visibility_haze_requested.emit(position, radius, duration, strength)
+
+func report_objectives_assigned(objectives: Array) -> void:
+	objectives_assigned.emit(objectives)
+	objectives_updated.emit(objectives)
+
+func report_objectives_updated(objectives: Array) -> void:
+	objectives_updated.emit(objectives)
+
+func report_objective_triggered(objective_id: String, objective_type: String, sector_id: String, position: Vector3) -> void:
+	objective_triggered.emit(objective_id, objective_type, sector_id, position)
+
+func report_objective_completed(objective_id: String, objective_type: String, sector_id: String, position: Vector3) -> void:
+	objective_completed.emit(objective_id, objective_type, sector_id, position)
+
+func report_all_objectives_completed() -> void:
+	all_objectives_completed.emit()
+
+func report_extraction_available(position: Vector3) -> void:
+	extraction_available.emit(position)

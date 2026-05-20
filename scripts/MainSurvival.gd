@@ -6,7 +6,9 @@ var dynamic_world: DynamicWorldSystem
 var route_system: StationRouteSystem
 var sector_power: SectorPowerSystem
 var threat_director: ThreatDirector
+var objective_system: ObjectiveSystem
 var audio_router: AudioRouter
+var briefing_screen: MissionBriefingScreen
 var enemy_container: Node3D
 var arena_root: Node3D
 var navigation_region: NavigationRegion3D
@@ -16,10 +18,13 @@ var spawn_points: Array[Node3D] = []
 var entry_definitions: Array[Dictionary] = []
 var entry_doors: Dictionary = {}
 var entry_nodes: Dictionary = {}
+var mission_doors_by_sector: Dictionary = {}
 var run_finished: bool = false
 var survivor_count: int = 0
 var current_room_id: String = ""
 var successor_spawn_in_progress: bool = false
+var selected_role: String = "breacher"
+var mission_deployed: bool = false
 
 func _ready() -> void:
 	randomize()
@@ -32,12 +37,20 @@ func _ready() -> void:
 	_build_arena()
 	_spawn_player()
 	_build_director()
+	_build_objective_system()
+	_build_mission_briefing()
 	GameEvents.run_ended.connect(_on_run_ended)
-	GameEvents.reset_run()
+	GameEvents.objective_triggered.connect(_on_objective_triggered_callout)
+	GameEvents.objective_completed.connect(_on_mission_objective_completed)
+	GameEvents.all_objectives_completed.connect(_on_all_objectives_completed_callout)
+	GameEvents.extraction_available.connect(_on_extraction_available_callout)
 
 func _process(_delta: float) -> void:
 	if player and threat_director and not run_finished:
-		player.set_run_time(threat_director.elapsed, false)
+		var exit_located: bool = false
+		if objective_system:
+			exit_located = objective_system.extraction_available
+		player.set_run_time(threat_director.elapsed, exit_located)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if run_finished and InputBus.wants_restart(event):
@@ -84,6 +97,7 @@ func _build_lighting() -> void:
 	environment.fog_light_color = Color(0.12, 0.38, 0.44)
 	environment.fog_aerial_perspective = 0.12
 	world_environment.environment = environment
+	world_environment.add_to_group("world_env")
 	add_child(world_environment)
 	var moon = DirectionalLight3D.new()
 	moon.name = "ColdDirectionalLight"
@@ -142,6 +156,7 @@ func _build_arena() -> void:
 	_build_hidden_route_markers()
 	_build_dynamic_environment_props()
 	_build_interior_partitions()
+	_build_vent_markers()
 	_build_npc_survivors()
 
 func _register_nav_blocker(world_position: Vector3, size: Vector3) -> void:
@@ -321,6 +336,8 @@ func _spawn_survivor(entry_reason: String) -> void:
 	_apply_background_entry_bonuses(player.survivor_loadout)
 	if threat_director:
 		threat_director.set_player(player)
+	if objective_system:
+		objective_system.set_player(player)
 	if survivor_count > 1:
 		_erode_existing_lost_kits()
 		_spawn_successor_only_pickups(entry_position)
@@ -376,8 +393,9 @@ func _generate_survivor_loadout(entry_reason: String) -> Dictionary:
 	var starts_with_headset = survivor_count == 1
 	var weapon_id = _pick_starting_weapon_id()
 	var weapon_data = WeaponData.create_weapon(weapon_id)
-	return {
+	var loadout: Dictionary = {
 		"background": backgrounds[randi() % backgrounds.size()],
+		"role": selected_role,
 		"weapon_id": weapon_id,
 		"weapon_attachments": _roll_starting_weapon_attachments(),
 		"wearable_modules": _roll_starting_wearable_modules(),
@@ -391,6 +409,9 @@ func _generate_survivor_loadout(entry_reason: String) -> Dictionary:
 		"resources": _roll_starting_resources(),
 		"entry_reason": entry_reason
 	}
+	if mission_deployed:
+		_apply_role_to_loadout(loadout, selected_role)
+	return loadout
 
 func _pick_starting_weapon_id() -> String:
 	var pool = [
@@ -800,6 +821,112 @@ func _build_director() -> void:
 		threat_director.set_station_floor(route_system.current_floor)
 	_spawn_demo_enemies()
 
+func _build_objective_system() -> void:
+	objective_system = ObjectiveSystem.new()
+	objective_system.name = "ObjectiveSystem"
+	add_child(objective_system)
+	objective_system.setup(player, arena_root, sector_power, threat_director, _get_mission_sector_definitions())
+	objective_system.prepare_run()
+
+func _build_mission_briefing() -> void:
+	briefing_screen = MissionBriefingScreen.new()
+	briefing_screen.name = "MissionBriefingScreen"
+	briefing_screen.configure(objective_system.get_objective_snapshot(), _get_role_definitions(), selected_role)
+	briefing_screen.deploy_pressed.connect(_on_briefing_deploy_pressed)
+	add_child(briefing_screen)
+
+func _on_briefing_deploy_pressed(role_id: String) -> void:
+	selected_role = role_id
+	mission_deployed = true
+	if player:
+		var loadout: Dictionary = player.survivor_loadout.duplicate(true)
+		_apply_role_to_loadout(loadout, selected_role)
+		player.apply_survivor_loadout(loadout)
+	if briefing_screen and is_instance_valid(briefing_screen):
+		briefing_screen.queue_free()
+		briefing_screen = null
+	if objective_system:
+		objective_system.start_run()
+	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	GameEvents.reset_run()
+
+func _get_role_definitions() -> Array[Dictionary]:
+	return [
+		{
+			"id": "breacher",
+			"label": "BREACHER",
+			"weapon_id": "a12_service_rifle",
+			"weapon_name": "A-12 Service Rifle",
+			"description": "Fast reloads. Hits hard up close.",
+			"summary": "Fast reloads\nMelee amplifier",
+			"extra_ammo": 90,
+			"resources": {"melee_amp": 1},
+			"reload_speed_mult": 1.35
+		},
+		{
+			"id": "medic",
+			"label": "MEDIC",
+			"weapon_id": "rattler_smg",
+			"weapon_name": "Rattler SMG",
+			"description": "Keeps the team breathing.",
+			"summary": "Corpse revival\nExtra trauma supplies",
+			"extra_ammo": 120,
+			"resources": {"trauma_kit": 2, "bandage": 3},
+			"can_revive_corpses": true
+		},
+		{
+			"id": "heavy",
+			"label": "HEAVY",
+			"weapon_id": "l6_deck_lmg",
+			"weapon_name": "L-6 Deck LMG",
+			"description": "Suppression and thermal. Slow but unstoppable.",
+			"summary": "Huge reserves\nSlower sprint",
+			"extra_ammo": 200,
+			"resources": {"thermal_canister": 2},
+			"movement_penalty_mult": 0.82
+		}
+	]
+
+func _apply_role_to_loadout(loadout: Dictionary, role_id: String) -> void:
+	var role: Dictionary = _get_role_definition(role_id)
+	loadout["role"] = String(role.get("id", "breacher"))
+	loadout["weapon_id"] = String(role.get("weapon_id", "a12_service_rifle"))
+	var role_weapon: WeaponData = WeaponData.create_weapon(String(loadout["weapon_id"]))
+	loadout["recoverable_ammo_type"] = role_weapon.ammo_type
+	loadout["extra_ammo"] = int(role.get("extra_ammo", 0))
+	loadout["reload_speed_mult"] = float(role.get("reload_speed_mult", 1.0))
+	loadout["movement_penalty_mult"] = float(role.get("movement_penalty_mult", 1.0))
+	loadout["can_revive_corpses"] = bool(role.get("can_revive_corpses", false))
+	loadout["role_description"] = String(role.get("description", ""))
+	var resources: Dictionary = {}
+	var raw_resources: Variant = loadout.get("resources", {})
+	if raw_resources is Dictionary:
+		resources = raw_resources.duplicate(true)
+	var role_resources: Dictionary = {}
+	var raw_role_resources: Variant = role.get("resources", {})
+	if raw_role_resources is Dictionary:
+		role_resources = raw_role_resources
+	for key in role_resources.keys():
+		var resource_id: String = String(key)
+		resources[resource_id] = int(resources.get(resource_id, 0)) + int(role_resources[key])
+	loadout["resources"] = resources
+
+func _get_role_definition(role_id: String) -> Dictionary:
+	for role in _get_role_definitions():
+		if String(role.get("id", "")) == role_id:
+			return role
+	return _get_role_definitions()[0]
+
+func _get_mission_sector_definitions() -> Array[Dictionary]:
+	return [
+		{"sector_id": "medical_bay", "label": "Medical Bay", "position": Vector3(-24.0, 0.05, -24.0)},
+		{"sector_id": "reactor_control", "label": "Reactor Control", "position": Vector3(24.0, 0.05, -24.0)},
+		{"sector_id": "cargo_processing", "label": "Cargo Processing", "position": Vector3(24.0, 0.05, 24.0)},
+		{"sector_id": "hab_commons", "label": "Hab Commons", "position": Vector3(-24.0, 0.05, 24.0)},
+		{"sector_id": "security_spine", "label": "Security Spine", "position": Vector3(-24.0, 0.05, 0.0)},
+		{"sector_id": "comms_nook", "label": "Comms Nook", "position": Vector3(0.0, 0.05, -25.0)}
+	]
+
 func _build_interior_partitions() -> void:
 	var wall_specs: Array[Dictionary] = [
 		{"name": "NorthSpineWestWallA", "position": Vector3(-5.2, 1.85, -29.0), "size": Vector3(0.42, 3.45, 9.5)},
@@ -859,6 +986,7 @@ func _build_interior_partitions() -> void:
 			bool(door_spec["along_x"]),
 			doorway_color
 		)
+	_build_mission_doors()
 	_create_box("CentralCeilingRibNorth", Vector3(0.0, 3.85, -16.0), Vector3(9.8, 0.18, 0.32), Color(0.045, 0.055, 0.062), false)
 	_create_box("CentralCeilingRibSouth", Vector3(0.0, 3.85, 16.0), Vector3(9.8, 0.18, 0.32), Color(0.045, 0.055, 0.062), false)
 	_create_box("CrossCeilingRibWest", Vector3(-16.0, 3.85, 0.0), Vector3(0.32, 0.18, 9.8), Color(0.045, 0.055, 0.062), false)
@@ -877,6 +1005,55 @@ func _create_station_doorway(doorway_name: String, floor_position: Vector3, alon
 		_create_box(doorway_name + "_FrameRight", base_position + Vector3(0.0, 0.0, 1.35), Vector3(0.28, 2.55, 0.16), Color(0.055, 0.07, 0.075), false)
 		_create_box(doorway_name + "_Header", base_position + Vector3(0.0, 1.25, 0.0), Vector3(0.32, 0.18, 2.85), Color(0.055, 0.07, 0.075), false)
 		_create_box(doorway_name + "_OpenPanel", base_position + Vector3(0.0, -0.08, 1.95), Vector3(0.16, 2.22, 0.9), color, false)
+
+func _build_mission_doors() -> void:
+	mission_doors_by_sector.clear()
+	var door_specs: Array[Dictionary] = [
+		{"door_id": "door_medical_bay", "sector_id": "medical_bay", "name": "MissionDoorMedicalBay", "position": Vector3(-5.22, 1.22, -22.0), "size": Vector3(0.3, 2.45, 2.35), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 2.55), "color": Color(0.14, 0.22, 0.25)},
+		{"door_id": "door_reactor_control", "sector_id": "reactor_control", "name": "MissionDoorReactorControl", "position": Vector3(5.22, 1.22, -22.0), "size": Vector3(0.3, 2.45, 2.35), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 2.55), "color": Color(0.2, 0.14, 0.11)},
+		{"door_id": "door_cargo_processing", "sector_id": "cargo_processing", "name": "MissionDoorCargoProcessing", "position": Vector3(5.22, 1.22, 22.0), "size": Vector3(0.3, 2.45, 2.35), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 2.55), "color": Color(0.2, 0.18, 0.12)},
+		{"door_id": "door_hab_commons", "sector_id": "hab_commons", "name": "MissionDoorHabCommons", "position": Vector3(-5.22, 1.22, 22.0), "size": Vector3(0.3, 2.45, 2.35), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 2.55), "color": Color(0.14, 0.18, 0.24)},
+		{"door_id": "door_security_spine", "sector_id": "security_spine", "name": "MissionDoorSecuritySpine", "position": Vector3(-22.0, 1.22, -5.22), "size": Vector3(2.35, 2.45, 0.3), "glow_offset": Vector3(0.0, 0.0, -0.02), "glow_size": Vector3(2.55, 2.6, 0.04), "color": Color(0.12, 0.2, 0.25)},
+		{"door_id": "door_comms_nook", "sector_id": "comms_nook", "name": "MissionDoorCommsNook", "position": Vector3(0.0, 1.22, -5.22), "size": Vector3(2.35, 2.45, 0.3), "glow_offset": Vector3(0.0, 0.0, -0.02), "glow_size": Vector3(2.55, 2.6, 0.04), "color": Color(0.1, 0.22, 0.24)}
+	]
+	for spec in door_specs:
+		var door_id: String = String(spec.get("door_id", "mission_door"))
+		var sector_id: String = String(spec.get("sector_id", "arena"))
+		var door_position: Vector3 = _dict_vector3(spec, "position", Vector3.ZERO)
+		var door_size: Vector3 = _dict_vector3(spec, "size", Vector3.ONE)
+		var glow_offset: Vector3 = _dict_vector3(spec, "glow_offset", Vector3.ZERO)
+		var glow_size: Vector3 = _dict_vector3(spec, "glow_size", Vector3.ONE)
+		var door_color: Color = _dict_color(spec, "color", Color(0.14, 0.2, 0.22))
+		facility_state.register_door(door_id, sector_id, FacilityProgression.DOOR_LOCKED)
+		var door: FacilityDoor3D = _create_facility_door(door_id, String(spec.get("name", door_id)), door_position, door_size, door_color)
+		entry_doors[door_id] = door
+		var mapped_doors: Array = []
+		var raw_mapped_doors: Variant = mission_doors_by_sector.get(sector_id, [])
+		if raw_mapped_doors is Array:
+			mapped_doors = raw_mapped_doors
+		mapped_doors.append(door_id)
+		mission_doors_by_sector[sector_id] = mapped_doors
+		var glow: Node3D = _create_box(door_id + "_EdgeGlow", door_position + glow_offset, glow_size, Color(0.12, 0.86, 0.78), false)
+		for child in glow.get_children():
+			if child is MeshInstance3D:
+				(child as MeshInstance3D).material_override = EffectMaterialCache.get_material(Color(0.08, 0.72, 0.68), 0.18)
+
+func _build_vent_markers() -> void:
+	var vent_specs: Array[Dictionary] = [
+		{"name": "SwarmerVentNorthWest", "position": Vector3(-12.0, 1.2, -35.62), "size": Vector3(0.72, 0.54, 0.12)},
+		{"name": "SwarmerVentNorthEast", "position": Vector3(18.0, 1.2, -35.62), "size": Vector3(0.72, 0.54, 0.12)},
+		{"name": "SwarmerVentSouthWest", "position": Vector3(-20.0, 1.2, 35.62), "size": Vector3(0.72, 0.54, 0.12)},
+		{"name": "SwarmerVentSouthEast", "position": Vector3(12.0, 1.2, 35.62), "size": Vector3(0.72, 0.54, 0.12)},
+		{"name": "SwarmerVentWestMid", "position": Vector3(-35.62, 1.2, -8.0), "size": Vector3(0.12, 0.54, 0.72)},
+		{"name": "SwarmerVentEastMid", "position": Vector3(35.62, 1.2, 10.0), "size": Vector3(0.12, 0.54, 0.72)}
+	]
+	for spec in vent_specs:
+		var vent_position: Vector3 = _dict_vector3(spec, "position", Vector3.ZERO)
+		var vent_size: Vector3 = _dict_vector3(spec, "size", Vector3.ONE)
+		var vent: Node3D = _create_box(String(spec.get("name", "SwarmerVent")), vent_position, vent_size, Color(0.08, 0.08, 0.1), false)
+		vent.add_to_group("swarmer_vents")
+		var slat_size: Vector3 = Vector3(vent_size.x * 0.72, vent_size.y * 0.12, vent_size.z * 1.12)
+		_create_box(String(spec.get("name", "SwarmerVent")) + "_Slats", vent_position + Vector3(0.0, 0.0, -0.01), slat_size, Color(0.025, 0.03, 0.034), false)
 
 func _build_npc_survivors() -> void:
 	# Three placeholder humanoid NPCs derived from
@@ -1016,6 +1193,43 @@ func _on_facility_door_forced_open(door_id: String) -> void:
 	facility_state.unlock_flag("forced_%s" % door_id)
 	if player and player.comms:
 		player.comms.announce("Door forced. The station will remember that route.")
+
+func _on_objective_triggered_callout(_objective_id: String, _objective_type: String, _sector_id: String, _position: Vector3) -> void:
+	if player and player.comms:
+		player.comms.announce("Objective triggered — breach incoming. Watch your six.")
+
+func _on_mission_objective_completed(_objective_id: String, _objective_type: String, sector_id: String, position: Vector3) -> void:
+	_unlock_mission_doors_for_sector(sector_id, position)
+	if player and player.comms:
+		player.comms.announce("Sector cleared. Door unlocked.")
+
+func _unlock_mission_doors_for_sector(sector_id: String, trace_position: Vector3) -> void:
+	if not mission_doors_by_sector.has(sector_id):
+		return
+	var raw_doors: Variant = mission_doors_by_sector.get(sector_id, [])
+	if not (raw_doors is Array):
+		return
+	var opened_count: int = 0
+	for door_id_value in raw_doors:
+		var door_id: String = String(door_id_value)
+		facility_state.set_door_state(door_id, FacilityProgression.DOOR_OPEN)
+		if entry_doors.has(door_id):
+			var door: FacilityDoor3D = entry_doors[door_id] as FacilityDoor3D
+			if door:
+				door.set_state(FacilityProgression.DOOR_OPEN)
+				_leave_solver_trace("UnlockTrace_%s" % door_id, door.global_position + Vector3.UP * 0.2, Color(0.12, 0.85, 0.74))
+				opened_count += 1
+	if opened_count > 0 and player and player.comms:
+		player.comms.announce("%s bulkhead released." % sector_id.replace("_", " "))
+	GameEvents.emit_environment_impulse(trace_position, 1.0, 3.5, self, "sector_bulkhead_release")
+
+func _on_all_objectives_completed_callout() -> void:
+	if player and player.comms:
+		player.comms.announce("All objectives complete. Find the extraction point. Move.")
+
+func _on_extraction_available_callout(_position: Vector3) -> void:
+	if player and player.comms:
+		player.comms.announce("LZ is hot. Get to extraction now.")
 
 func _on_service_node_used(_node_id: String, service_type: String, target_id: String, method_id: String, _actor: Node) -> void:
 	if service_type == "sector_power":

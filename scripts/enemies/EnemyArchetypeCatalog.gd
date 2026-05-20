@@ -3,6 +3,7 @@ class_name EnemyArchetypeCatalog
 
 static func get_archetypes() -> Array[Dictionary]:
 	return [
+		_a("swarmer", "Swarmer", 18, 7.2, 0.95, 18, 1.4, Color(0.12, 0.55, 0.18), {}, ["fast", "fragile", "swarm"], 4.0, 0.18, 0.55),
 		_a("stalker_husk", "Stalker Husk", 65, 3.3, 1.6, 28, 1.0, Color(0.22, 0.25, 0.28), {}, []),
 		_a("crawler_husk", "Crawler Husk", 38, 4.1, 1.15, 18, 1.3, Color(0.18, 0.28, 0.24), {}, ["small_route"]),
 		_a("bleeder", "Bleeder", 54, 2.8, 8.5, 24, 1.0, Color(0.34, 0.16, 0.18), {}, ["ranged_bleed"]),
@@ -61,13 +62,16 @@ static func pick_for_floor_and_threat(floor_index: int, threat_level: float) -> 
 		return "echo"
 	return pick_for_threat(threat_level)
 
-static func _a(id: String, label: String, health: float, speed: float, attack_range: float, sight: float, hearing: float, color: Color, armor: Dictionary, traits: Array[String]) -> Dictionary:
+static func _a(id: String, label: String, health: float, speed: float, attack_range: float, sight: float, hearing: float, color: Color, armor: Dictionary, traits: Array[String], attack_damage: float = 17.0, body_radius: float = 0.35, body_height: float = 1.45) -> Dictionary:
 	return {
 		"id": id,
 		"label": label,
 		"health": health,
 		"speed": speed,
 		"attack_range": attack_range,
+		"attack_damage": attack_damage,
+		"body_radius": body_radius,
+		"body_height": body_height,
 		"sight": sight,
 		"hearing": hearing,
 		"color": color,

@@ -15,6 +15,9 @@ var queued_attack_zone: String = ""
 var queued_attack_damage: float = 0.0
 var queued_attack_type: String = "laceration"
 var base_speed: float = 3.3
+var attack_damage: float = 17.0
+var body_radius: float = 0.35
+var body_height: float = 1.45
 var gravity: float = 18.0
 var dead: bool = false
 var archetype_id: String = "stalker_husk"
@@ -61,6 +64,9 @@ func _apply_archetype_definition(definition: Dictionary) -> void:
 	archetype_label = String(definition.get("label", archetype_label))
 	base_speed = float(definition.get("speed", base_speed))
 	attack_range = float(definition.get("attack_range", attack_range))
+	attack_damage = float(definition.get("attack_damage", attack_damage))
+	body_radius = float(definition.get("body_radius", body_radius))
+	body_height = float(definition.get("body_height", body_height))
 	var raw_traits: Variant = definition.get("traits")
 	if raw_traits is Array:
 		archetype_traits = raw_traits.duplicate(true)
@@ -154,7 +160,7 @@ func _start_attack() -> void:
 		return
 	var attack_modifier := health_zones.get_attack_modifier()
 	var zone := _pick_player_hit_zone()
-	var damage := randf_range(12.0, 22.0) * attack_modifier
+	var damage := randf_range(attack_damage * 0.8, attack_damage * 1.2) * attack_modifier
 	var damage_type := "laceration"
 	if archetype_traits.has("ranged_bleed"):
 		damage_type = "bleed"
@@ -313,6 +319,12 @@ func die(_cause: String) -> void:
 		if child is EnemyHitZone3D:
 			child.collision_layer = 0
 			child.collision_mask = 0
+	if archetype_traits.has("swarm"):
+		var swarm_tween: Tween = create_tween()
+		swarm_tween.tween_interval(2.0)
+		swarm_tween.tween_property(self, "scale", Vector3.ZERO, 0.18)
+		swarm_tween.tween_callback(Callable(self, "queue_free"))
+		return
 	# Mark as interactable corpse
 	if not has_meta("display_name"):
 		set_meta("display_name", "CORPSE — " + archetype_id.replace("_", " ").to_upper())
@@ -325,15 +337,45 @@ func die(_cause: String) -> void:
 	tween.tween_property(self, "position:y",
 		position.y - 0.55, 0.28).set_ease(Tween.EASE_IN)
 
+func revive_from_corpse() -> void:
+	if not dead:
+		return
+	dead = false
+	dormant_awake = true
+	set_process(true)
+	set_physics_process(true)
+	collision_layer = 2
+	collision_mask = 1
+	rotation_degrees.z = 0.0
+	position.y += 0.55
+	remove_meta("display_name")
+	if health_zones:
+		health_zones.is_dead = false
+		health_zones.health = max(1.0, health_zones.max_health * 0.25)
+	if brain:
+		brain.set_process(true)
+	if navigation_agent:
+		navigation_agent.set_process(true)
+	if senses:
+		senses.set_process(true)
+	for child in get_children():
+		if child is EnemyHitZone3D:
+			var hit_zone: EnemyHitZone3D = child as EnemyHitZone3D
+			hit_zone.collision_layer = 4
+			hit_zone.collision_mask = 0
+			hit_zone.monitoring = true
+			hit_zone.monitorable = true
+	GameEvents.request_sound("enemy_grunt", global_position, 0.85)
+
 func _build_physics_body() -> void:
 	collision_layer = 2
 	collision_mask = 1
 	var collision := CollisionShape3D.new()
 	var shape := CapsuleShape3D.new()
-	shape.radius = 0.35
-	shape.height = 1.45
+	shape.radius = body_radius
+	shape.height = body_height
 	collision.shape = shape
-	collision.position.y = 0.85
+	collision.position.y = body_height * 0.5 + body_radius * 0.15
 	add_child(collision)
 
 func _build_visuals() -> void:
@@ -342,6 +384,9 @@ func _build_visuals() -> void:
 	var raw_color: Variant = arch_def.get("color")
 	if raw_color is Color:
 		color = raw_color
+	if archetype_traits.has("swarm"):
+		_build_swarmer_visuals(color)
+		return
 	body_mesh = _add_visual_capsule("EnemyTorso", 0.31, 1.08, Vector3(0.0, 1.02, 0.0), color, 0.0)
 	_add_visual_capsule("EnemyAbdomen", 0.24, 0.48, Vector3(0.0, 0.64, 0.02), color.darkened(0.18), 0.0)
 	_add_visual_box("EnemyShoulderLine", Vector3(0.82, 0.16, 0.24), Vector3(0.0, 1.36, 0.0), color.lightened(0.08), 0.0)
@@ -365,6 +410,17 @@ func _build_visuals() -> void:
 		scale = Vector3(1.0, 0.55, 1.15)
 	elif archetype_traits.has("immobile"):
 		scale = Vector3(1.45, 1.2, 1.45)
+
+func _build_swarmer_visuals(color: Color) -> void:
+	body_mesh = _add_visual_capsule("SwarmerBody", 0.18, 0.55, Vector3(0.0, 0.38, 0.0), color, 0.0, Vector3(90.0, 0.0, 0.0))
+	head_mesh = _add_visual_sphere("SwarmerHead", 0.13, Vector3(0.0, 0.44, -0.24), color.lightened(0.16), 0.0)
+	core_mesh = _add_visual_sphere("SwarmerCore", 0.075, Vector3(0.0, 0.42, -0.36), Color(0.4, 1.0, 0.22), 0.7)
+	_add_visual_box("SwarmerEyeLeft", Vector3(0.035, 0.022, 0.018), Vector3(-0.045, 0.48, -0.36), Color(0.82, 1.0, 0.36), 0.45)
+	_add_visual_box("SwarmerEyeRight", Vector3(0.035, 0.022, 0.018), Vector3(0.045, 0.48, -0.36), Color(0.82, 1.0, 0.36), 0.45)
+	for index in range(4):
+		var side: float = -1.0 if index < 2 else 1.0
+		var z_offset: float = -0.08 + float(index % 2) * 0.22
+		_add_visual_capsule("SwarmerLeg%d" % index, 0.025, 0.42, Vector3(side * 0.2, 0.22, z_offset), color.darkened(0.28), 0.0, Vector3(72.0, 0.0, side * 35.0))
 
 func _add_archetype_visual_marks(base_color: Color) -> void:
 	if archetype_id == "carapace":
