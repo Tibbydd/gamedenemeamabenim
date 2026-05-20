@@ -12,7 +12,10 @@ var corruption: float = 0.0
 var _font: Font
 
 func _ready() -> void:
-	set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_CENTER)
+	anchor_left = 0.5
+	anchor_right = 0.5
+	anchor_top = 1.0
+	anchor_bottom = 1.0
 	offset_left = -140.0
 	offset_right = 140.0
 	offset_top = -52.0
@@ -53,16 +56,16 @@ func _draw() -> void:
 	if icons.is_empty():
 		return
 
-	var icon_size := 22.0
-	var spacing := 28.0
-	var total_w := icons.size() * spacing - (spacing - icon_size)
-	var start_x := (size.x - total_w) * 0.5
+	var icon_size: float = 22.0
+	var spacing: float = 28.0
+	var total_w: float = icons.size() * spacing - (spacing - icon_size)
+	var start_x: float = (size.x - total_w) * 0.5
 
 	for i in range(icons.size()):
 		var icon: Dictionary = icons[i]
-		var cx := start_x + i * spacing + icon_size * 0.5
-		var cy := icon_size * 0.5
-		var center := Vector2(cx, cy)
+		var cx: float = start_x + i * spacing + icon_size * 0.5
+		var cy: float = icon_size * 0.5
+		var center: Vector2 = Vector2(cx, cy)
 		_draw_icon(icon["type"], center, icon_size * 0.5, float(icon["severity"]))
 
 func _draw_icon(icon_type: String, center: Vector2, r: float, severity: float) -> void:
@@ -84,7 +87,7 @@ func _draw_icon(icon_type: String, center: Vector2, r: float, severity: float) -
 			var col := Color(1.0, 0.52, 0.08, 0.88)
 			# Flame: 3 upward lobes
 			for lobe in range(3):
-				var ox := (lobe - 1) * r * 0.42
+				var ox: float = (lobe - 1) * r * 0.42
 				draw_circle(center + Vector2(ox, -r * 0.22), r * 0.28, col)
 			draw_circle(center + Vector2(0.0, r * 0.18), r * 0.45, col)
 			draw_arc(center, r, -PI * 0.5, -PI * 0.5 + TAU * severity, 20,

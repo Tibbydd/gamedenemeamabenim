@@ -816,10 +816,10 @@ func _update_hud() -> void:
 	# Vitals bars — scale height proportional to blood/stamina
 	var bar_full_h := 80.0
 	if blood_bar:
-		var blood_ratio := clamp(health.blood_volume / 100.0, 0.0, 1.0)
+		var blood_ratio: float = clamp(health.blood_volume / 100.0, 0.0, 1.0)
 		blood_bar.offset_top = blood_bar.offset_bottom - bar_full_h * blood_ratio
 	if stamina_bar:
-		var stam_ratio := clamp(stamina / max_stamina, 0.0, 1.0)
+		var stam_ratio: float = clamp(stamina / max_stamina, 0.0, 1.0)
 		stamina_bar.offset_top = stamina_bar.offset_bottom - bar_full_h * stam_ratio
 	_update_crosshair_spread()
 

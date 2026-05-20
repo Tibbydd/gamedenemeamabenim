@@ -1,5 +1,4 @@
 extends Node
-class_name AudioRouter
 
 const MIX_RATE := 22050
 

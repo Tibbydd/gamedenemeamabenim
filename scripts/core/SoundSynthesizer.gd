@@ -83,7 +83,7 @@ func _synth_alert() -> PackedFloat32Array:
 	for i in range(n):
 		var t := float(i) / float(SAMPLE_RATE)
 		var env := exp(-t / 0.22) * smoothstep(0.0, 0.02, t)
-		var rise := lerp(180.0, 680.0, clamp(t / 0.18, 0.0, 1.0))
+		var rise: float = lerp(180.0, 680.0, clamp(t / 0.18, 0.0, 1.0))
 		var tone := sin(TAU * rise * t)
 		var growl := sin(TAU * 95.0 * t) * 0.4
 		samples[i] = (tone * 0.6 + growl + randf_range(-0.08, 0.08)) * env * 0.75
@@ -110,7 +110,7 @@ func _synth_howler_death() -> PackedFloat32Array:
 	for i in range(n):
 		var t := float(i) / float(SAMPLE_RATE)
 		var env := (1.0 - t / duration) * smoothstep(0.0, 0.03, t)
-		var shriek := sin(TAU * lerp(480.0, 120.0, t / duration) * t)
+		var shriek: float = sin(TAU * lerp(480.0, 120.0, t / duration) * t)
 		var growl := sin(TAU * 88.0 * t) * 0.55
 		samples[i] = (shriek * 0.55 + growl + randf_range(-0.12, 0.12) * exp(-t * 5.0)) * env * 0.78
 	return samples

@@ -7,7 +7,7 @@ var route_system: StationRouteSystem
 var sector_power: SectorPowerSystem
 var threat_director: ThreatDirector
 var objective_system: ObjectiveSystem
-var audio_router: AudioRouter
+var audio_router: Node
 var briefing_screen: MissionBriefingScreen
 var enemy_container: Node3D
 var arena_root: Node3D
@@ -80,9 +80,7 @@ func _build_dynamic_world_system() -> void:
 	add_child(dynamic_world)
 
 func _build_audio_router() -> void:
-	audio_router = AudioRouter.new()
-	audio_router.name = "AudioRouter"
-	add_child(audio_router)
+	audio_router = get_node_or_null("/root/AudioRouter")
 
 func _build_lighting() -> void:
 	var world_environment = WorldEnvironment.new()
