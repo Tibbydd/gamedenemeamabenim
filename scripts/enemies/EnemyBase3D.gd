@@ -30,6 +30,9 @@ var head_mesh: MeshInstance3D
 var core_mesh: MeshInstance3D
 var vocal_timer: float = 0.0
 var dormant_awake: bool = true
+var wander_timer: float = 0.0
+var wander_target: Vector3 = Vector3.ZERO
+var _group_alert_sent: bool = false
 
 func _ready() -> void:
 	add_to_group("enemies")
@@ -74,14 +77,24 @@ func _apply_archetype_definition(definition: Dictionary) -> void:
 		archetype_traits = []
 
 func _on_noise_for_dormant(noise_position: Vector3, loudness: float) -> void:
-	if dormant_awake or not archetype_traits.has("dormant"):
+	if dormant_awake:
+		if not target and loudness >= 12.0 and global_position.distance_to(noise_position) <= loudness:
+			_group_alert_sent = false
 		return
-	if loudness >= 16.0 and global_position.distance_to(noise_position) <= loudness:
+	if not archetype_traits.has("dormant"):
+		return
+	if loudness >= 12.0 and global_position.distance_to(noise_position) <= loudness:
 		dormant_awake = true
 		GameEvents.request_sound("enemy_grunt", global_position, 0.9)
 
 func set_target(new_target) -> void:
+	var had_target: bool = target != null
 	target = new_target
+	if target and not had_target and not _group_alert_sent:
+		_group_alert_sent = true
+		_send_group_alert()
+	elif not target:
+		_group_alert_sent = false
 
 func _physics_process(delta: float) -> void:
 	if dead:
@@ -90,7 +103,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 	if not target:
-		_apply_gravity(delta)
+		_update_wander(delta)
 		move_and_slide()
 		return
 	attack_cooldown = max(0.0, attack_cooldown - delta)
@@ -144,6 +157,52 @@ func _move_toward(world_position: Vector3, delta: float) -> void:
 	var facing_direction: Vector3 = Vector3(velocity.x, 0.0, velocity.z)
 	if facing_direction.length_squared() > 0.01:
 		look_at(global_position + facing_direction.normalized(), Vector3.UP)
+
+func _update_wander(delta: float) -> void:
+	if archetype_traits.has("immobile"):
+		velocity.x = 0.0
+		velocity.z = 0.0
+		_apply_gravity(delta)
+		return
+	wander_timer -= delta
+	if wander_timer <= 0.0:
+		wander_timer = randf_range(3.0, 7.0)
+		var offset: Vector3 = Vector3(randf_range(-10.0, 10.0), 0.0, randf_range(-10.0, 10.0))
+		wander_target = global_position + offset
+		if navigation_agent:
+			navigation_agent.set_target_position(wander_target)
+	if navigation_agent and not navigation_agent.is_navigation_finished():
+		var next_position: Vector3 = navigation_agent.get_next_path_position()
+		var direction: Vector3 = next_position - global_position
+		direction.y = 0.0
+		if direction.length() > 0.12:
+			direction = direction.normalized()
+			var desired_velocity: Vector3 = direction * (base_speed * health_zones.get_speed_modifier() * 0.4)
+			var steering: float = clamp(delta * 4.0, 0.0, 1.0)
+			velocity.x = lerp(velocity.x, desired_velocity.x, steering)
+			velocity.z = lerp(velocity.z, desired_velocity.z, steering)
+			look_at(global_position + direction, Vector3.UP)
+		else:
+			velocity.x = lerp(velocity.x, 0.0, delta * 5.0)
+			velocity.z = lerp(velocity.z, 0.0, delta * 5.0)
+	else:
+		velocity.x = lerp(velocity.x, 0.0, delta * 4.0)
+		velocity.z = lerp(velocity.z, 0.0, delta * 4.0)
+	_apply_gravity(delta)
+
+func _send_group_alert() -> void:
+	for node in get_tree().get_nodes_in_group("enemies"):
+		if not (node is EnemyBase3D) or node == self:
+			continue
+		var enemy: EnemyBase3D = node as EnemyBase3D
+		if enemy.dead:
+			continue
+		if enemy.global_position.distance_to(global_position) > 9.0:
+			continue
+		enemy.dormant_awake = true
+		if not enemy.target:
+			enemy.target = target
+			enemy._group_alert_sent = true
 
 func _apply_gravity(delta: float) -> void:
 	if not is_on_floor():
@@ -268,6 +327,7 @@ func _pick_weakened_player_zone() -> String:
 	return ""
 
 func on_zone_damaged(zone_name: String, _damage: float, hit_position: Vector3) -> void:
+	_flash_hit()
 	if core_mesh and zone_name == "parasite_core":
 		core_mesh.scale = Vector3.ONE * 1.45
 		GameEvents.emit_player_noise(hit_position, 12.0)
@@ -277,6 +337,22 @@ func on_zone_damaged(zone_name: String, _damage: float, hit_position: Vector3) -
 		else:
 			senses.last_known_position = global_position
 		senses.has_last_known_position = true
+
+func _flash_hit() -> void:
+	for child in get_children():
+		if not (child is MeshInstance3D):
+			continue
+		var mesh: MeshInstance3D = child as MeshInstance3D
+		var mat: StandardMaterial3D = StandardMaterial3D.new()
+		mat.albedo_color = Color(1.0, 0.22, 0.05, 1.0)
+		mat.emission_enabled = true
+		mat.emission = Color(1.0, 0.28, 0.05)
+		mat.emission_energy_multiplier = 3.0
+		mesh.set_surface_override_material(0, mat)
+		var tween: Tween = create_tween()
+		tween.tween_interval(0.09)
+		tween.tween_callback(Callable(mesh, "set_surface_override_material").bind(0, null))
+		break
 
 func receive_generic_hit(damage: float, hit_position: Vector3, hit_direction: Vector3) -> void:
 	health_zones.receive_generic_hit(damage, hit_position, hit_direction)

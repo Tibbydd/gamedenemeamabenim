@@ -23,6 +23,7 @@ var pain: float = 0.0
 var shock: float = 0.0
 var stimulant_time: float = 0.0
 var burn_time: float = 0.0
+var damage_resist: float = 0.0
 var is_dead: bool = false
 var active_treatment: String = ""
 var treatment_time_left: float = 0.0
@@ -89,6 +90,7 @@ func _make_part(max_value: float) -> Dictionary:
 func apply_damage(part_name: String, amount: float, damage_type: String = "trauma") -> Dictionary:
 	if is_dead or not parts.has(part_name):
 		return {}
+	amount *= max(0.05, 1.0 - damage_resist)
 	var part: Dictionary = parts[part_name]
 	part["current"] = max(0.0, float(part["current"]) - amount)
 	if float(part["current"]) <= 0.0:

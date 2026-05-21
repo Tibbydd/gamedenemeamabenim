@@ -1,53 +1,105 @@
 extends CanvasLayer
 class_name MissionBriefingScreen
 
-signal deploy_pressed(role_id: String)
+signal deploy_pressed(weapon_id: String, equipment_id: String, passive_id: String)
 
 var panel: BriefingPanel
 var objectives: Array = []
-var roles: Array[Dictionary] = []
-var selected_role: String = "breacher"
+var weapons: Array[Dictionary] = []
+var equipment: Array[Dictionary] = []
+var passives: Array[Dictionary] = []
+var selected_weapon_id: String = "a12_service_rifle"
+var selected_equipment_id: String = "trauma_kit"
+var selected_passive_id: String = "none"
 
-func configure(objective_preview: Array, role_definitions: Array[Dictionary], default_role: String) -> void:
+func configure(objective_preview: Array, _role_definitions: Array[Dictionary], _default_role: String) -> void:
 	objectives = objective_preview.duplicate(true)
-	roles = role_definitions.duplicate(true)
-	selected_role = default_role
+	weapons = _get_weapon_options()
+	equipment = _get_equipment_options()
+	passives = _get_passive_options()
 	if panel:
-		panel.configure(objectives, roles, selected_role)
+		panel.configure(objectives, weapons, equipment, passives, selected_weapon_id, selected_equipment_id, selected_passive_id)
 
 func _ready() -> void:
 	layer = 100
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	if weapons.is_empty():
+		weapons = _get_weapon_options()
+	if equipment.is_empty():
+		equipment = _get_equipment_options()
+	if passives.is_empty():
+		passives = _get_passive_options()
 	panel = BriefingPanel.new()
 	panel.name = "BriefingPanel"
 	panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	panel.configure(objectives, roles, selected_role)
-	panel.role_selected.connect(_on_panel_role_selected)
+	panel.configure(objectives, weapons, equipment, passives, selected_weapon_id, selected_equipment_id, selected_passive_id)
+	panel.selection_changed.connect(_on_panel_selection_changed)
 	panel.deploy_pressed.connect(_on_panel_deploy_pressed)
 	add_child(panel)
 
-func _on_panel_role_selected(role_id: String) -> void:
-	selected_role = role_id
+func _on_panel_selection_changed(weapon_id: String, equipment_id: String, passive_id: String) -> void:
+	selected_weapon_id = weapon_id
+	selected_equipment_id = equipment_id
+	selected_passive_id = passive_id
 
-func _on_panel_deploy_pressed(role_id: String) -> void:
-	deploy_pressed.emit(role_id)
+func _on_panel_deploy_pressed(weapon_id: String, equipment_id: String, passive_id: String) -> void:
+	deploy_pressed.emit(weapon_id, equipment_id, passive_id)
+
+func _get_weapon_options() -> Array[Dictionary]:
+	return [
+		{"id": "m7_colony_pistol", "label": "M-7 Colony Pistol"},
+		{"id": "m9_security_revolver", "label": "M-9 Security Revolver"},
+		{"id": "rattler_smg", "label": "Rattler SMG"},
+		{"id": "station_guard_carbine", "label": "Station Guard Carbine"},
+		{"id": "a12_service_rifle", "label": "A-12 Service Rifle"},
+		{"id": "hullbreaker_ar", "label": "Hullbreaker AR"},
+		{"id": "l6_deck_lmg", "label": "L-6 Deck LMG"}
+	]
+
+func _get_equipment_options() -> Array[Dictionary]:
+	return [
+		{"id": "trauma_kit", "label": "Trauma Kit", "detail": "Bleed and fracture care"},
+		{"id": "stim_injector", "label": "Stim Injector", "detail": "Pain and speed burst"},
+		{"id": "incendiary", "label": "Incendiary", "detail": "UNAVAILABLE", "disabled": true},
+		{"id": "ammo_cache", "label": "Ammo Cache", "detail": "+90 reserve ammo"},
+		{"id": "med_spray", "label": "Med Spray", "detail": "Emergency wound foam"}
+	]
+
+func _get_passive_options() -> Array[Dictionary]:
+	return [
+		{"id": "heavy_armor", "label": "Heavy Armor", "detail": "Move slower, resist damage"},
+		{"id": "stealth_liner", "label": "Stealth Liner", "detail": "Quiet movement"},
+		{"id": "medic_rig", "label": "Medic Rig", "detail": "Fast treatment"},
+		{"id": "ammo_harness", "label": "Ammo Harness", "detail": "More reserve ammo"},
+		{"id": "none", "label": "No Module", "detail": "No passive changes"}
+	]
 
 class BriefingPanel:
 	extends Control
 
-	signal role_selected(role_id: String)
-	signal deploy_pressed(role_id: String)
+	signal selection_changed(weapon_id: String, equipment_id: String, passive_id: String)
+	signal deploy_pressed(weapon_id: String, equipment_id: String, passive_id: String)
 
 	var objectives: Array = []
-	var roles: Array[Dictionary] = []
-	var selected_role: String = "breacher"
+	var weapons: Array[Dictionary] = []
+	var equipment: Array[Dictionary] = []
+	var passives: Array[Dictionary] = []
+	var selected_weapon_id: String = "a12_service_rifle"
+	var selected_equipment_id: String = "trauma_kit"
+	var selected_passive_id: String = "none"
 	var deploy_rect: Rect2 = Rect2()
-	var role_rects: Dictionary = {}
+	var weapon_rects: Dictionary = {}
+	var equipment_rects: Dictionary = {}
+	var passive_rects: Dictionary = {}
 
-	func configure(objective_preview: Array, role_definitions: Array[Dictionary], default_role: String) -> void:
+	func configure(objective_preview: Array, weapon_options: Array[Dictionary], equipment_options: Array[Dictionary], passive_options: Array[Dictionary], weapon_id: String, equipment_id: String, passive_id: String) -> void:
 		objectives = objective_preview.duplicate(true)
-		roles = role_definitions.duplicate(true)
-		selected_role = default_role
+		weapons = weapon_options.duplicate(true)
+		equipment = equipment_options.duplicate(true)
+		passives = passive_options.duplicate(true)
+		selected_weapon_id = weapon_id
+		selected_equipment_id = equipment_id
+		selected_passive_id = passive_id
 		queue_redraw()
 
 	func _ready() -> void:
@@ -60,18 +112,41 @@ class BriefingPanel:
 		if not mouse_event.pressed or mouse_event.button_index != MOUSE_BUTTON_LEFT:
 			return
 		if deploy_rect.has_point(mouse_event.position):
-			deploy_pressed.emit(selected_role)
+			deploy_pressed.emit(selected_weapon_id, selected_equipment_id, selected_passive_id)
 			return
-		for role_id in role_rects.keys():
-			var raw_rect: Variant = role_rects[role_id]
+		if _apply_selection(mouse_event.position, weapon_rects, "weapon"):
+			return
+		if _apply_selection(mouse_event.position, equipment_rects, "equipment"):
+			return
+		_apply_selection(mouse_event.position, passive_rects, "passive")
+
+	func _apply_selection(mouse_position: Vector2, rects: Dictionary, selector_type: String) -> bool:
+		for option_id in rects.keys():
+			var raw_rect: Variant = rects[option_id]
 			if not (raw_rect is Rect2):
 				continue
 			var rect: Rect2 = raw_rect
-			if rect.has_point(mouse_event.position):
-				selected_role = String(role_id)
-				role_selected.emit(selected_role)
-				queue_redraw()
-				return
+			if not rect.has_point(mouse_position):
+				continue
+			var id_value: String = String(option_id)
+			if selector_type == "equipment" and _equipment_disabled(id_value):
+				return true
+			if selector_type == "weapon":
+				selected_weapon_id = id_value
+			elif selector_type == "equipment":
+				selected_equipment_id = id_value
+			else:
+				selected_passive_id = id_value
+			selection_changed.emit(selected_weapon_id, selected_equipment_id, selected_passive_id)
+			queue_redraw()
+			return true
+		return false
+
+	func _equipment_disabled(option_id: String) -> bool:
+		for option in equipment:
+			if String(option.get("id", "")) == option_id:
+				return bool(option.get("disabled", false))
+		return false
 
 	func _draw() -> void:
 		var viewport_size: Vector2 = get_viewport_rect().size
@@ -81,37 +156,44 @@ class BriefingPanel:
 		draw_rect(Rect2(Vector2.ZERO, viewport_size), Color(0.02, 0.04, 0.05, 0.96), true)
 		var center_x: float = viewport_size.x * 0.5
 		draw_string(font, Vector2(center_x - 118.0, 48.0), "STATION CLEANERS", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 22, Color(0.42, 1.0, 0.88, 0.96))
-		draw_string(font, Vector2(center_x - 70.0, 72.0), "DEPLOYMENT BRIEF", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.52, 0.72, 0.72, 0.82))
-		_draw_roles(font, viewport_size)
-		_draw_objectives(font, viewport_size)
+		draw_string(font, Vector2(center_x - 86.0, 72.0), "EQUIPMENT BRIEF", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.52, 0.72, 0.72, 0.82))
+		var start_x: float = max(34.0, viewport_size.x * 0.055)
+		var top_y: float = 116.0
+		_draw_selector(font, "PRIMARY", weapons, selected_weapon_id, Rect2(Vector2(start_x, top_y), Vector2(220.0, 304.0)), weapon_rects)
+		_draw_selector(font, "EQUIPMENT", equipment, selected_equipment_id, Rect2(Vector2(start_x + 240.0, top_y), Vector2(180.0, 246.0)), equipment_rects)
+		_draw_selector(font, "MODULE", passives, selected_passive_id, Rect2(Vector2(start_x + 438.0, top_y), Vector2(180.0, 246.0)), passive_rects)
+		_draw_objectives(font, Rect2(Vector2(min(viewport_size.x - 380.0, start_x + 642.0), top_y), Vector2(340.0, 304.0)))
 		_draw_deploy_button(font, viewport_size)
 
-	func _draw_roles(font: Font, viewport_size: Vector2) -> void:
-		role_rects.clear()
-		var start: Vector2 = Vector2(max(44.0, viewport_size.x * 0.08), 118.0)
-		draw_string(font, start + Vector2(0.0, -22.0), "ROLE", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.7, 1.0, 0.9, 0.9))
-		for index in range(roles.size()):
-			var role: Dictionary = roles[index]
-			var role_id: String = String(role.get("id", "role"))
-			var rect: Rect2 = Rect2(start + Vector2(0.0, float(index) * 118.0), Vector2(360.0, 96.0))
-			role_rects[role_id] = rect
-			var selected: bool = role_id == selected_role
-			var fill_color: Color = Color(0.035, 0.075, 0.078, 0.82)
-			var border_color: Color = Color(0.13, 0.42, 0.42, 0.7)
+	func _draw_selector(font: Font, title: String, options: Array[Dictionary], selected_id: String, rect: Rect2, rects: Dictionary) -> void:
+		rects.clear()
+		draw_rect(rect, Color(0.025, 0.055, 0.06, 0.78), true)
+		draw_rect(rect, Color(0.13, 0.55, 0.54, 0.58), false, 1.2)
+		draw_string(font, rect.position + Vector2(14.0, 24.0), title, HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.7, 1.0, 0.9, 0.95))
+		var y: float = rect.position.y + 42.0
+		for option in options:
+			var option_id: String = String(option.get("id", ""))
+			var row: Rect2 = Rect2(Vector2(rect.position.x + 10.0, y), Vector2(rect.size.x - 20.0, 28.0))
+			rects[option_id] = row
+			var disabled: bool = bool(option.get("disabled", false))
+			var selected: bool = option_id == selected_id
+			var fill: Color = Color(0.032, 0.07, 0.072, 0.72)
+			var border: Color = Color(0.12, 0.33, 0.33, 0.5)
+			var text_col: Color = Color(0.72, 0.9, 0.84, 0.92)
 			if selected:
-				fill_color = Color(0.04, 0.13, 0.125, 0.92)
-				border_color = Color(0.32, 1.0, 0.82, 0.96)
-			draw_rect(rect, fill_color, true)
-			draw_rect(rect, border_color, false, 1.4)
-			draw_string(font, rect.position + Vector2(16.0, 23.0), String(role.get("label", "ROLE")), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 17, Color(0.78, 1.0, 0.92, 0.96))
-			draw_string(font, rect.position + Vector2(16.0, 45.0), String(role.get("weapon_name", "Unknown weapon")), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 13, Color(0.9, 0.82, 0.54, 0.92))
-			var summary: String = String(role.get("summary", ""))
-			var summary_lines: PackedStringArray = summary.split("\n")
-			for line_index in range(min(summary_lines.size(), 2)):
-				draw_string(font, rect.position + Vector2(16.0, 66.0 + float(line_index) * 15.0), String(summary_lines[line_index]), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 12, Color(0.58, 0.78, 0.76, 0.92))
+				fill = Color(0.04, 0.13, 0.125, 0.92)
+				border = Color(0.32, 1.0, 0.82, 0.96)
+			if disabled:
+				text_col = Color(0.36, 0.42, 0.42, 0.8)
+			draw_rect(row, fill, true)
+			draw_rect(row, border, false, 1.0)
+			draw_string(font, row.position + Vector2(8.0, 18.0), String(option.get("label", option_id)), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 11, text_col)
+			if option.has("detail"):
+				var detail_color: Color = Color(text_col.r * 0.75, text_col.g * 0.8, text_col.b * 0.8, text_col.a * 0.8)
+				draw_string(font, row.position + Vector2(8.0, 31.0), String(option.get("detail", "")), HORIZONTAL_ALIGNMENT_LEFT, -1.0, 9, detail_color)
+			y += 34.0
 
-	func _draw_objectives(font: Font, viewport_size: Vector2) -> void:
-		var panel_rect: Rect2 = Rect2(Vector2(viewport_size.x * 0.55, 118.0), Vector2(min(430.0, viewport_size.x * 0.36), 332.0))
+	func _draw_objectives(font: Font, panel_rect: Rect2) -> void:
 		draw_rect(panel_rect, Color(0.025, 0.055, 0.06, 0.78), true)
 		draw_rect(panel_rect, Color(0.13, 0.55, 0.54, 0.58), false, 1.2)
 		draw_string(font, panel_rect.position + Vector2(18.0, 28.0), "OBJECTIVES", HORIZONTAL_ALIGNMENT_LEFT, -1.0, 15, Color(0.7, 1.0, 0.9, 0.95))
@@ -131,14 +213,7 @@ class BriefingPanel:
 	func _draw_objective_icon(center: Vector2, objective_type: String) -> void:
 		var color: Color = Color(0.32, 1.0, 0.82, 0.92)
 		if objective_type == "restore_power":
-			var bolt: PackedVector2Array = PackedVector2Array([
-				center + Vector2(2.0, -9.0),
-				center + Vector2(-5.0, 1.0),
-				center + Vector2(1.0, 1.0),
-				center + Vector2(-2.0, 10.0),
-				center + Vector2(8.0, -2.0),
-				center + Vector2(2.0, -2.0)
-			])
+			var bolt: PackedVector2Array = PackedVector2Array([center + Vector2(2.0, -9.0), center + Vector2(-5.0, 1.0), center + Vector2(1.0, 1.0), center + Vector2(-2.0, 10.0), center + Vector2(8.0, -2.0), center + Vector2(2.0, -2.0)])
 			draw_colored_polygon(bolt, Color(0.95, 0.68, 0.24, 0.95))
 		elif objective_type == "uplink_terminal":
 			draw_line(center + Vector2(0.0, 9.0), center + Vector2(0.0, -7.0), color, 2.0)

@@ -214,10 +214,10 @@ func _spawn_extraction_zone() -> void:
 
 func _choose_extraction_position() -> Vector3:
 	var candidates: Array[Vector3] = [
-		Vector3(0.0, 0.05, -26.0),
-		Vector3(0.0, 0.05, 26.0),
-		Vector3(22.0, 0.05, 0.0),
-		Vector3(-22.0, 0.05, 0.0)
+		Vector3(0.0, 0.05, -42.0),
+		Vector3(-22.0, 0.05, -20.0),
+		Vector3(22.0, 0.05, 10.0),
+		Vector3(2.0, 3.65, -20.0)
 	]
 	if not player:
 		return candidates[0]

@@ -20,6 +20,9 @@ var vent_warning_light: OmniLight3D
 var vent_warning_origin: Vector3 = Vector3.ZERO
 var vent_warning_active: bool = false
 var vent_warning_flicker_elapsed: float = 0.0
+var derelict_phase: bool = true
+var ambient_patrol_timer: float = 0.0
+var alert_decay_timer: float = 0.0
 
 func setup(new_player: PlayerControllerFPS, new_enemy_container: Node3D, new_spawn_points: Array[Node3D]) -> void:
 	player = new_player
@@ -46,6 +49,10 @@ func _process(delta: float) -> void:
 	elapsed += delta
 	noise_pressure = max(0.0, noise_pressure - delta * 0.12)
 	_cleanup_dead_enemies()
+	if derelict_phase:
+		alert_decay_timer = max(0.0, alert_decay_timer - delta * 0.08)
+		_update_derelict_patrols(delta)
+		return
 	_update_threat()
 	_update_breach_waves(delta)
 	_update_vent_spawns(delta)
@@ -65,7 +72,8 @@ func spawn_breach_wave(source_position: Vector3, enemy_count: int, duration: flo
 		"duration": max(1.0, duration),
 		"elapsed": 0.0,
 		"spawn_timer": 0.05,
-		"reason": reason
+		"reason": reason,
+		"announced": false
 	}
 	breach_waves.append(wave)
 	noise_pressure = min(0.55, noise_pressure + 0.12)
@@ -98,6 +106,13 @@ func _update_breach_waves(delta: float) -> void:
 		var elapsed_time: float = float(wave.get("elapsed", 0.0)) + delta
 		var spawn_timer_value: float = float(wave.get("spawn_timer", 0.0)) - delta
 		var interval: float = max(0.45, duration / max(1.0, float(count)))
+		if spawned <= 0 and count > 0 and not bool(wave.get("announced", false)):
+			var announce_origin: Vector3 = _dictionary_vector3(wave, "position", Vector3.ZERO)
+			var announce_position: Vector3 = _pick_breach_spawn_position(announce_origin)
+			wave["announced"] = true
+			AudioRouter.play_3d("enemy_alert", announce_position, 1.2)
+			if player and player.comms:
+				player.comms.announce("Breach detected. Multiple hostiles inbound.")
 		while spawn_timer_value <= 0.0 and spawned < count and active_enemies.size() < max_active_enemies:
 			var origin: Vector3 = _dictionary_vector3(wave, "position", Vector3.ZERO)
 			var spawn_position: Vector3 = _pick_breach_spawn_position(origin)
@@ -176,7 +191,21 @@ func _spawn_enemy() -> void:
 	var spawn: Node3D = _pick_spawn_point()
 	spawn_enemy_at(spawn.global_position)
 
-func spawn_enemy_at(spawn_position: Vector3, forced_archetype_id: String = "") -> EnemyBase3D:
+func _update_derelict_patrols(delta: float) -> void:
+	if spawn_points.is_empty() or not enemy_container:
+		return
+	ambient_patrol_timer -= delta
+	if active_enemies.size() >= 5:
+		return
+	if active_enemies.size() >= 3 and ambient_patrol_timer > 0.0:
+		return
+	var spawn: Node3D = spawn_points[randi() % spawn_points.size()]
+	var enemy: EnemyBase3D = spawn_enemy_at(spawn.global_position, "", false)
+	if enemy:
+		enemy.dormant_awake = true
+	ambient_patrol_timer = randf_range(20.0, 40.0)
+
+func spawn_enemy_at(spawn_position: Vector3, forced_archetype_id: String = "", assign_target: bool = true) -> EnemyBase3D:
 	if not enemy_container:
 		return null
 	var enemy: EnemyBase3D = EnemyBase3D.new()
@@ -186,7 +215,10 @@ func spawn_enemy_at(spawn_position: Vector3, forced_archetype_id: String = "") -
 		enemy.archetype_id = forced_archetype_id
 	enemy.global_position = spawn_position
 	enemy_container.add_child(enemy)
-	enemy.set_target(player)
+	if assign_target:
+		enemy.set_target(player)
+	else:
+		enemy.set_target(null)
 	active_enemies.append(enemy)
 	return enemy
 
@@ -240,9 +272,9 @@ func _pick_swarmer_vent_origin() -> Vector3:
 	var angle: float = randf() * TAU
 	var distance: float = randf_range(6.0, 12.0)
 	var origin: Vector3 = player.global_position + Vector3(cos(angle), 0.0, sin(angle)) * distance
-	origin.x = clamp(origin.x, -34.0, 34.0)
-	origin.z = clamp(origin.z, -34.0, 34.0)
-	origin.y = 0.35
+	origin.x = clamp(origin.x, -32.0, 32.0)
+	origin.z = clamp(origin.z, -46.0, 32.0)
+	origin.y = player.global_position.y + 0.35
 	return origin
 
 func _next_spawn_interval() -> float:
@@ -259,11 +291,17 @@ func _on_enemy_killed(_enemy: Node, _cause: String) -> void:
 
 func _on_player_noise(_position: Vector3, loudness: float) -> void:
 	noise_pressure = min(0.35, noise_pressure + loudness / 600.0)
+	if derelict_phase and loudness >= 24.0:
+		alert_decay_timer += loudness / 80.0
+		if alert_decay_timer >= 1.0:
+			derelict_phase = false
+			spawn_breach_wave(_position, randi_range(6, 8), 26.0, "combat_noise")
 
 func _on_player_corruption_changed(value: float) -> void:
 	player_corruption = value
 
 func _on_objective_triggered(_objective_id: String, _objective_type: String, _sector_id: String, position: Vector3) -> void:
+	derelict_phase = false
 	spawn_breach_wave(position, randi_range(8, 10), 30.0, "objective_triggered")
 
 func _on_objective_completed(_objective_id: String, _objective_type: String, _sector_id: String, position: Vector3) -> void:

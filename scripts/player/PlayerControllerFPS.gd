@@ -3,6 +3,8 @@ class_name PlayerControllerFPS
 
 signal died(reason: String)
 
+const MinimapHUDScene := preload("res://scripts/ui/MinimapHUD.gd")
+
 var walk_speed: float = 5.2
 var sprint_speed: float = 8.1
 var crouch_speed: float = 2.9
@@ -40,6 +42,8 @@ var carry_capacity: int = 18
 var selected_role: String = "breacher"
 var reload_speed_mult: float = 1.0
 var movement_penalty_mult: float = 1.0
+var footstep_noise_mult: float = 1.0
+var damage_resist_mult: float = 0.0
 var can_revive_corpses: bool = false
 var wearable_modules: Dictionary = {}
 var wearable_slots: Dictionary = {}
@@ -56,6 +60,7 @@ var barrel_obstruction: float = 0.0
 var barrel_push_side: float = 0.0
 var recoil_recovery_pitch_remaining: float = 0.0
 var recoil_recovery_yaw_remaining: float = 0.0
+var recoil_hold_timer: float = 0.0
 var weapon_kick_offset: Vector3 = Vector3.ZERO
 var weapon_kick_rotation: Vector3 = Vector3.ZERO
 var current_weapon_visual_id: String = ""
@@ -118,6 +123,9 @@ var status_icons: StatusIconsHUD
 var crosshair_ctrl: CrosshairControl
 var glasses_overlay: GlassesOverlay
 var objective_tracker: ObjectiveTrackerHUD
+var minimap: Control
+var objectives_cache: Array = []
+var extraction_pos_cache: Vector3 = Vector3(9999.0, 0.0, 9999.0)
 var blood_bar: ColorRect
 var stamina_bar: ColorRect
 var debug_overlay_visible: bool = true
@@ -482,6 +490,15 @@ func _build_hud() -> void:
 	objective_tracker.offset_right = 452.0
 	objective_tracker.offset_bottom = 178.0
 	hud_layer.add_child(objective_tracker)
+
+	minimap = MinimapHUDScene.new()
+	minimap.name = "MinimapHUD"
+	minimap.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	minimap.offset_left = -112.0
+	minimap.offset_right = -12.0
+	minimap.offset_top = -112.0
+	minimap.offset_bottom = -12.0
+	hud_layer.add_child(minimap)
 	_connect_objective_events()
 
 	comms_label = _make_hud_label("")
@@ -591,14 +608,17 @@ func _play_reload_dip() -> void:
 	tween.tween_property(weapon_pivot, "position:y", start_y, 0.22).set_ease(Tween.EASE_OUT)
 
 func _on_objectives_assigned(objectives: Array) -> void:
+	objectives_cache = objectives.duplicate(true)
 	if objective_tracker:
 		objective_tracker.set_objectives(objectives)
 
 func _on_objectives_updated(objectives: Array) -> void:
+	objectives_cache = objectives.duplicate(true)
 	if objective_tracker:
 		objective_tracker.set_objectives(objectives)
 
 func _on_extraction_available(world_position: Vector3) -> void:
+	extraction_pos_cache = world_position
 	if objective_tracker:
 		objective_tracker.set_extraction_available(world_position)
 
@@ -833,6 +853,7 @@ func _emit_movement_noise(delta: float, move_input: Vector2, speed: float) -> vo
 	loudness *= _get_surface_noise_modifier()
 	if int(resources.get("boot_grips", 0)) > 0 and _get_surface_id_underfoot() in ["metal", "grate", "deck"]:
 		loudness *= 0.5
+	loudness *= footstep_noise_mult
 	GameEvents.emit_player_noise(global_position, loudness)
 	noise_timer = 0.62 if stealth_focus else (0.45 if is_crouching else 0.28)
 
@@ -868,6 +889,8 @@ func _update_hud() -> void:
 		status_icons.update_status(health, mental.corruption if mental else 0.0)
 	if objective_tracker:
 		objective_tracker.set_player_position(global_position)
+	if minimap:
+		minimap.update(global_position, yaw, objectives_cache, extraction_pos_cache)
 	_update_contamination_fog()
 	if not weapon or not weapon.data:
 		_force_weapon_ready(equipped_weapon_id)
@@ -1132,6 +1155,10 @@ func apply_survivor_loadout(loadout: Dictionary) -> void:
 	selected_role = String(survivor_loadout.get("role", selected_role))
 	reload_speed_mult = float(survivor_loadout.get("reload_speed_mult", 1.0))
 	movement_penalty_mult = float(survivor_loadout.get("movement_penalty_mult", 1.0))
+	footstep_noise_mult = float(survivor_loadout.get("noise_mult", 1.0))
+	damage_resist_mult = float(survivor_loadout.get("damage_resist", 0.0))
+	if health:
+		health.damage_resist = damage_resist_mult
 	can_revive_corpses = bool(survivor_loadout.get("can_revive_corpses", false))
 	has_headset = bool(survivor_loadout.get("has_headset", false))
 	flashlight_type = String(survivor_loadout.get("flashlight", "handheld"))
@@ -1140,6 +1167,7 @@ func apply_survivor_loadout(loadout: Dictionary) -> void:
 	glasses_power_empty = false
 	glasses_lens_damage = float(survivor_loadout.get("glasses_lens_damage", 0.0))
 	_apply_background_traits(String(survivor_loadout.get("background", "Survivor")))
+	treatment_speed_modifier *= float(survivor_loadout.get("treatment_speed", 1.0))
 	for module_id in survivor_loadout.get("wearable_modules", []):
 		_install_wearable_module_internal(String(module_id), false)
 	if weapon:
@@ -1842,28 +1870,34 @@ func _reinstall_known_cross_weapon_attachments() -> void:
 func _on_weapon_recoil_requested(pitch_radians: float, yaw_radians: float, rearward_kick: float) -> void:
 	var pitch_kick := pitch_radians * recoil_trait_modifier
 	var yaw_kick := yaw_radians * recoil_trait_modifier
-	pitch = clamp(pitch + pitch_kick * 1.6, deg_to_rad(-82.0), deg_to_rad(82.0))
-	yaw += yaw_kick * 0.75
+	pitch = clamp(pitch + pitch_kick * 5.2, deg_to_rad(-82.0), deg_to_rad(82.0))
+	yaw += yaw_kick * 1.6
 	rotation.y = yaw
 	head.rotation.x = pitch
-	recoil_recovery_pitch_remaining += pitch_kick * 0.68
-	recoil_recovery_yaw_remaining += yaw_kick * 0.42
+	recoil_recovery_pitch_remaining += pitch_kick * 5.2
+	recoil_recovery_yaw_remaining += yaw_kick * 1.6
+	recoil_hold_timer = 0.16
 	weapon_kick_offset += Vector3(0.0, rearward_kick * 0.18, rearward_kick * 1.4)
 	weapon_kick_rotation += Vector3(pitch_kick * 4.2, yaw_kick * 2.8, -yaw_kick * 2.2)
 
 func _recover_recoil(delta: float) -> void:
+	recoil_hold_timer = max(0.0, recoil_hold_timer - delta)
+	if recoil_hold_timer > 0.0:
+		weapon_kick_offset = weapon_kick_offset.move_toward(Vector3.ZERO, delta * 0.38)
+		weapon_kick_rotation = weapon_kick_rotation.move_toward(Vector3.ZERO, delta * 1.4)
+		return
 	if recoil_recovery_pitch_remaining > 0.0001:
-		var pitch_recovery: float = min(recoil_recovery_pitch_remaining, delta * 0.72)
+		var pitch_recovery: float = min(recoil_recovery_pitch_remaining, delta * 0.18)
 		pitch = clamp(pitch - pitch_recovery, deg_to_rad(-82.0), deg_to_rad(82.0))
 		head.rotation.x = pitch
 		recoil_recovery_pitch_remaining -= pitch_recovery
 	if abs(recoil_recovery_yaw_remaining) > 0.0001:
-		var yaw_recovery: float = sign(recoil_recovery_yaw_remaining) * min(abs(recoil_recovery_yaw_remaining), delta * 0.38)
+		var yaw_recovery: float = sign(recoil_recovery_yaw_remaining) * min(abs(recoil_recovery_yaw_remaining), delta * 0.12)
 		yaw -= yaw_recovery
 		rotation.y = yaw
 		recoil_recovery_yaw_remaining -= yaw_recovery
 	weapon_kick_offset = weapon_kick_offset.move_toward(Vector3.ZERO, delta * 0.38)
-	weapon_kick_rotation = weapon_kick_rotation.move_toward(Vector3.ZERO, delta * 2.2)
+	weapon_kick_rotation = weapon_kick_rotation.move_toward(Vector3.ZERO, delta * 1.4)
 
 func _on_weapon_condition_changed(condition: float) -> void:
 	if not weapon_pivot:
@@ -1998,6 +2032,7 @@ func _on_shot_fired(_projectile: BallisticProjectile) -> void:
 	_create_gunshot_smoke()
 	if crosshair_ctrl:
 		crosshair_ctrl.notify_fired()
+		crosshair_ctrl.spread_px = min(crosshair_ctrl.spread_px + 18.0, 62.0)
 	var muzzle_pos := muzzle_marker.global_position if muzzle_marker else global_position
 	var family := weapon.data.weapon_family if weapon and weapon.data else ""
 	var shot_id := "gunshot_thermal" if family == "thermal" else ("gunshot_heavy" if family in ["lmg", "launcher"] else "gunshot_light")
@@ -2124,15 +2159,15 @@ func _update_crosshair_spread() -> void:
 		return
 	var base_spread := 0.0
 	if weapon and weapon.data:
-		base_spread = weapon.data.spread_degrees * 9.0
+		base_spread = weapon.data.spread_degrees * 22.0
 	var vel_xz := Vector2(velocity.x, velocity.z).length()
 	var max_speed := sprint_speed if sprint_speed > 0.0 else 8.0
-	var speed_spread := (vel_xz / max_speed) * 18.0
-	var air_spread := 22.0 if not is_on_floor() else 0.0
+	var speed_spread := (vel_xz / max_speed) * 32.0
+	var air_spread := 42.0 if not is_on_floor() else 0.0
 	var stance_reduction := 10.0 if is_prone else (6.0 if is_crouching else 0.0)
 	if float(resources.get("suppression_active", 0.0)) > 0.0:
 		stance_reduction += 14.0
 	var target := base_spread + speed_spread + air_spread - stance_reduction
-	crosshair_ctrl.spread_px = lerp(crosshair_ctrl.spread_px, max(4.0, target), get_process_delta_time() * 8.0)
+	crosshair_ctrl.spread_px = lerp(crosshair_ctrl.spread_px, max(10.0, target), get_process_delta_time() * 4.0)
 	crosshair_ctrl.role_cooldown = float(resources.get("role_ability_cooldown", 0.0))
 	crosshair_ctrl.role_cooldown_max = _get_role_ability_cooldown_duration()

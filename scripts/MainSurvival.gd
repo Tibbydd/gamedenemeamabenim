@@ -127,14 +127,14 @@ func _build_arena() -> void:
 	enemy_container = Node3D.new()
 	enemy_container.name = "Enemies"
 	add_child(enemy_container)
-	_create_box("Floor", Vector3(0, -0.1, 0), Vector3(72, 0.2, 72), Color(0.105, 0.115, 0.122), true, "deck")
-	_create_box("StationCeiling", Vector3(0, 4.15, 0), Vector3(72, 0.24, 72), Color(0.08, 0.095, 0.105), true, "ceiling")
-	_create_box("NorthOuterWall", Vector3(0, 2.12, -36), Vector3(72, 4.28, 0.7), Color(0.16, 0.18, 0.2), true, "bulkhead")
-	_create_box("SouthOuterWall", Vector3(0, 2.12, 36), Vector3(72, 4.28, 0.7), Color(0.16, 0.18, 0.2), true, "bulkhead")
-	_create_box("WestOuterWall", Vector3(-36, 2.12, 0), Vector3(0.7, 4.28, 72), Color(0.16, 0.18, 0.2), true, "bulkhead")
-	_create_box("EastOuterWall", Vector3(36, 2.12, 0), Vector3(0.7, 4.28, 72), Color(0.16, 0.18, 0.2), true, "bulkhead")
+	_create_box("Floor", Vector3(0, -0.1, -8), Vector3(96, 0.2, 96), Color(0.105, 0.115, 0.122), true, "deck")
+	_create_box("NorthOuterWall", Vector3(0, 1.4, -48), Vector3(96, 11.0, 0.7), Color(0.16, 0.18, 0.2), true, "bulkhead")
+	_create_box("SouthOuterWall", Vector3(0, 1.4, 32), Vector3(96, 11.0, 0.7), Color(0.16, 0.18, 0.2), true, "bulkhead")
+	_create_box("WestOuterWall", Vector3(-32, 1.4, -8), Vector3(0.7, 11.0, 80), Color(0.16, 0.18, 0.2), true, "bulkhead")
+	_create_box("EastOuterWall", Vector3(32, 1.4, -8), Vector3(0.7, 11.0, 80), Color(0.16, 0.18, 0.2), true, "bulkhead")
 	nav_blockers.clear()
 	_build_room_shell_geometry()
+	_build_room_props()
 	var cover_specs: Array[Dictionary] = [
 		{"position": Vector3(-8, 0.75, -5), "size": Vector3(5, 1.5, 1.2)},
 		{"position": Vector3(8, 0.75, 4), "size": Vector3(5, 1.5, 1.2)},
@@ -148,16 +148,21 @@ func _build_arena() -> void:
 		var cover_size: Vector3 = _dict_vector3(spec, "size", Vector3.ONE)
 		_create_box("RuinCover", cover_position, cover_size, Color(0.22, 0.23, 0.24), true)
 		_register_nav_blocker(cover_position, cover_size)
-	_build_navigation_region()
 	for point in [
-		Vector3(-31, 0, -31),
-		Vector3(31, 0, -31),
-		Vector3(-31, 0, 31),
-		Vector3(31, 0, 31),
-		Vector3(0, 0, -32),
-		Vector3(0, 0, 32),
-		Vector3(-32, 0, 0),
-		Vector3(32, 0, 0)
+		Vector3(-1.5, 0.0, -24.0),
+		Vector3(1.5, 0.0, -24.0),
+		Vector3(-10.0, 0.0, -20.0),
+		Vector3(10.0, 0.0, -22.0),
+		Vector3(0.0, 0.0, -7.0),
+		Vector3(-10.0, 0.0, -2.0),
+		Vector3(10.0, 0.0, 6.0),
+		Vector3(-22.0, 0.0, -14.0),
+		Vector3(22.0, 0.0, -18.0),
+		Vector3(0.0, 0.0, -6.0),
+		Vector3(-2.0, -3.95, 4.0),
+		Vector3(-18.0, -3.95, 2.0),
+		Vector3(2.0, 3.65, -20.0),
+		Vector3(-14.0, 3.65, -20.0)
 	]:
 		var spawn = Node3D.new()
 		spawn.name = "ThreatSpawn"
@@ -191,8 +196,8 @@ func _build_navigation_region() -> void:
 	var vertex_lookup: Dictionary = {}
 	var polygons: Array = []
 	var cell_size = 2.0
-	var min_coord = -34.0
-	var cell_count = 34
+	var min_coord = -46.0
+	var cell_count = 46
 	for x_index in range(cell_count):
 		for z_index in range(cell_count):
 			var min_x = min_coord + float(x_index) * cell_size
@@ -258,33 +263,9 @@ func _nav_cell_blocked(min_x: float, max_x: float, min_z: float, max_z: float) -
 	return false
 
 func _build_room_shell_geometry() -> void:
-	var floor_color: Color = Color(0.09, 0.105, 0.112)
-	var ceiling_color: Color = Color(0.062, 0.076, 0.084)
-	var room_specs: Array[Dictionary] = [
-		{"name": "CentralHub", "position": Vector3(0.0, 0.0, 0.0), "size": Vector2(12.0, 12.0), "floor_color": Color(0.105, 0.118, 0.126)},
-		{"name": "NorthCorridor", "position": Vector3(0.0, 0.0, -14.0), "size": Vector2(4.0, 16.0), "floor_color": Color(0.08, 0.095, 0.105)},
-		{"name": "SouthCorridor", "position": Vector3(0.0, 0.0, 14.0), "size": Vector2(4.0, 16.0), "floor_color": Color(0.08, 0.095, 0.105)},
-		{"name": "EastConnector", "position": Vector3(11.5, 0.0, 0.0), "size": Vector2(11.0, 4.0), "floor_color": Color(0.08, 0.095, 0.105)},
-		{"name": "WestConnector", "position": Vector3(-11.5, 0.0, 0.0), "size": Vector2(11.0, 4.0), "floor_color": Color(0.08, 0.095, 0.105)},
-		{"name": "EastWing", "position": Vector3(22.0, 0.0, 0.0), "size": Vector2(10.0, 8.0), "floor_color": Color(0.085, 0.11, 0.12)},
-		{"name": "WestWing", "position": Vector3(-22.0, 0.0, 0.0), "size": Vector2(10.0, 8.0), "floor_color": Color(0.075, 0.105, 0.115)},
-		{"name": "NorthRoom", "position": Vector3(0.0, 0.0, -26.0), "size": Vector2(8.0, 8.0), "floor_color": Color(0.095, 0.105, 0.12)},
-		{"name": "SouthRoom", "position": Vector3(0.0, 0.0, 26.0), "size": Vector2(8.0, 8.0), "floor_color": Color(0.105, 0.1, 0.082)}
-	]
-	for spec in room_specs:
-		var room_name: String = String(spec.get("name", "Room"))
-		var room_position: Vector3 = _dict_vector3(spec, "position", Vector3.ZERO)
-		var room_size: Vector2 = Vector2(8.0, 8.0)
-		var raw_size: Variant = spec.get("size", room_size)
-		if raw_size is Vector2:
-			room_size = raw_size
-		var room_floor_color: Color = _dict_color(spec, "floor_color", floor_color)
-		_create_box("%sFloorPlate" % room_name, room_position + Vector3(0.0, 0.016, 0.0), Vector3(room_size.x, 0.028, room_size.y), room_floor_color, false, "deck")
-		_create_box("%sCeilingPanel" % room_name, room_position + Vector3(0.0, 3.1, 0.0), Vector3(room_size.x, 0.14, room_size.y), ceiling_color, true, "ceiling")
-	_build_hub_boundary_walls()
-	_build_corridor_boundary_walls()
-	_build_wing_boundary_walls()
-	_build_terminal_room_boundary_walls()
+	for spec in _get_station_room_specs():
+		_create_station_room_shell(spec)
+	_build_station_ramps()
 
 func _build_hub_boundary_walls() -> void:
 	_create_structural_wall("HubNorthWallWest", Vector3(-4.5, 1.55, -6.0), Vector3(3.0, 3.1, 0.32))
@@ -332,7 +313,146 @@ func _build_terminal_room_boundary_walls() -> void:
 
 func _create_structural_wall(wall_name: String, world_position: Vector3, size: Vector3) -> void:
 	_create_box(wall_name, world_position, size, Color(0.12, 0.145, 0.158), true, "bulkhead")
-	_register_nav_blocker(world_position, size)
+	if _blocker_intersects_ground_nav(world_position, size):
+		_register_nav_blocker(world_position, size)
+
+func _blocker_intersects_ground_nav(world_position: Vector3, size: Vector3) -> bool:
+	var min_y: float = world_position.y - size.y * 0.5
+	var max_y: float = world_position.y + size.y * 0.5
+	return min_y <= 0.35 and max_y >= -0.35
+
+func _get_station_room_specs() -> Array[Dictionary]:
+	return [
+		{"name": "EntryAirlock", "position": Vector3(0.0, 0.0, -42.0), "size": Vector2(6.0, 8.0), "sector_id": "entry_north", "open_sides": ["south"]},
+		{"name": "SecurityCheckpoint", "position": Vector3(0.0, 0.0, -34.0), "size": Vector2(8.0, 5.0), "sector_id": "entry_north", "open_sides": ["north", "south"]},
+		{"name": "NorthSpineCorridor", "position": Vector3(0.0, 0.0, -28.0), "size": Vector2(4.0, 8.0), "sector_id": "entry_north", "open_sides": ["north", "south"]},
+		{"name": "CentralAtrium", "position": Vector3(0.0, 0.0, -20.0), "size": Vector2(18.0, 14.0), "sector_id": "atrium", "ceiling_y": 6.0, "open_sides": ["north", "south", "east", "west"]},
+		{"name": "WestMedicalCorridor", "position": Vector3(-11.0, 0.0, -20.0), "size": Vector2(4.0, 10.0), "sector_id": "medical_wing", "open_sides": ["east", "west"]},
+		{"name": "MedicalBay", "position": Vector3(-22.0, 0.0, -20.0), "size": Vector2(10.0, 10.0), "sector_id": "medical_wing", "open_sides": ["east", "south"]},
+		{"name": "MedicalAnnex", "position": Vector3(-22.0, 0.0, -10.0), "size": Vector2(8.0, 6.0), "sector_id": "medical_wing", "open_sides": ["north", "east"]},
+		{"name": "SouthWestAnnexCorridor", "position": Vector3(-16.0, 0.0, -10.0), "size": Vector2(4.0, 4.0), "sector_id": "medical_wing", "open_sides": ["west", "east"]},
+		{"name": "EastArmoryCorridor", "position": Vector3(11.0, 0.0, -22.0), "size": Vector2(4.0, 8.0), "sector_id": "armory", "open_sides": ["west", "east"]},
+		{"name": "Armory", "position": Vector3(22.0, 0.0, -22.0), "size": Vector2(10.0, 8.0), "sector_id": "armory", "open_sides": ["west", "south"]},
+		{"name": "CommandAnteroom", "position": Vector3(22.0, 0.0, -14.0), "size": Vector2(8.0, 6.0), "sector_id": "armory", "open_sides": ["north", "west"]},
+		{"name": "SouthSpineCorridor", "position": Vector3(0.0, 0.0, -10.0), "size": Vector2(4.0, 6.0), "sector_id": "cafeteria", "open_sides": ["north", "south"]},
+		{"name": "CafeteriaCommons", "position": Vector3(0.0, 0.0, -2.0), "size": Vector2(14.0, 10.0), "sector_id": "cafeteria", "open_sides": ["north", "west", "east"]},
+		{"name": "SouthWestLabCorridor", "position": Vector3(-11.0, 0.0, -2.0), "size": Vector2(4.0, 8.0), "sector_id": "lab_alpha", "open_sides": ["east", "west"]},
+		{"name": "LaboratoryAlpha", "position": Vector3(-22.0, 0.0, -2.0), "size": Vector2(10.0, 10.0), "sector_id": "lab_alpha", "open_sides": ["east"]},
+		{"name": "SouthEastEngineeringCorridor", "position": Vector3(11.0, 0.0, 6.0), "size": Vector2(4.0, 8.0), "sector_id": "engineering", "open_sides": ["west", "east"]},
+		{"name": "EngineeringAccess", "position": Vector3(22.0, 0.0, 10.0), "size": Vector2(8.0, 8.0), "sector_id": "engineering", "open_sides": ["west", "south"]},
+		{"name": "SubStairwell", "position": Vector3(22.0, -4.0, 12.0), "size": Vector2(4.0, 8.0), "sector_id": "engineering", "floor_y": -4.0, "ceiling_y": -1.0, "open_sides": ["north", "west"]},
+		{"name": "SubWestCorridor", "position": Vector3(10.0, -4.0, 10.0), "size": Vector2(10.0, 4.0), "sector_id": "engineering", "floor_y": -4.0, "ceiling_y": -1.0, "open_sides": ["east", "west"]},
+		{"name": "MainEngineeringBay", "position": Vector3(-2.0, -4.0, 8.0), "size": Vector2(22.0, 16.0), "sector_id": "engineering", "floor_y": -4.0, "ceiling_y": -1.0, "open_sides": ["east", "west", "south", "north"]},
+		{"name": "CoolantProcessing", "position": Vector3(-18.0, -4.0, 2.0), "size": Vector2(10.0, 8.0), "sector_id": "engineering", "floor_y": -4.0, "ceiling_y": -1.0, "open_sides": ["east"]},
+		{"name": "WestCoolantCorridor", "position": Vector3(-10.0, -4.0, 8.0), "size": Vector2(4.0, 4.0), "sector_id": "engineering", "floor_y": -4.0, "ceiling_y": -1.0, "open_sides": ["east", "west"]},
+		{"name": "PowerCoreChamber", "position": Vector3(14.0, -4.0, -2.0), "size": Vector2(8.0, 10.0), "sector_id": "engineering", "floor_y": -4.0, "ceiling_y": -1.0, "open_sides": ["south"]},
+		{"name": "EastPowerCorridor", "position": Vector3(14.0, -4.0, 8.0), "size": Vector2(4.0, 8.0), "sector_id": "engineering", "floor_y": -4.0, "ceiling_y": -1.0, "open_sides": ["north", "south", "west", "east"]},
+		{"name": "EmergencyTunnel", "position": Vector3(0.0, -4.0, -6.0), "size": Vector2(3.0, 14.0), "sector_id": "engineering", "floor_y": -4.0, "ceiling_y": -1.0, "open_sides": ["south"]},
+		{"name": "UpperStairwell", "position": Vector3(22.0, 3.6, -14.0), "size": Vector2(4.0, 6.0), "sector_id": "command", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["west"]},
+		{"name": "UpperWestCorridor", "position": Vector3(12.0, 3.6, -20.0), "size": Vector2(6.0, 4.0), "sector_id": "command", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["east", "west"]},
+		{"name": "CommandOperations", "position": Vector3(2.0, 3.6, -20.0), "size": Vector2(14.0, 10.0), "sector_id": "command", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["east", "north", "west"], "railing_sides": ["south"]},
+		{"name": "CommsArray", "position": Vector3(2.0, 3.6, -32.0), "size": Vector2(8.0, 8.0), "sector_id": "command", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["south"]},
+		{"name": "NorthUpperCorridor", "position": Vector3(2.0, 3.6, -26.0), "size": Vector2(4.0, 6.0), "sector_id": "command", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["north", "south"]},
+		{"name": "ResearchArchives", "position": Vector3(-14.0, 3.6, -20.0), "size": Vector2(10.0, 8.0), "sector_id": "archives", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["east", "north"]},
+		{"name": "WestUpperCorridor", "position": Vector3(-6.0, 3.6, -20.0), "size": Vector2(5.0, 4.0), "sector_id": "archives", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["east", "west"]},
+		{"name": "ExecutiveBriefing", "position": Vector3(-14.0, 3.6, -30.0), "size": Vector2(8.0, 6.0), "sector_id": "archives", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["south"]},
+		{"name": "SouthBriefingCorridor", "position": Vector3(-14.0, 3.6, -24.0), "size": Vector2(4.0, 6.0), "sector_id": "archives", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["north", "south"]},
+		{"name": "UpperCatwalk", "position": Vector3(-4.0, 3.6, -14.0), "size": Vector2(10.0, 3.0), "sector_id": "atrium", "floor_y": 3.6, "ceiling_y": 6.6, "open_sides": ["east", "west"], "railing_sides": ["south"]}
+	]
+
+func _create_station_room_shell(spec: Dictionary) -> void:
+	var room_name: String = String(spec.get("name", "Room"))
+	var center: Vector3 = _dict_vector3(spec, "position", Vector3.ZERO)
+	var room_size: Vector2 = _dict_vector2(spec, "size", Vector2(8.0, 8.0))
+	var floor_y: float = float(spec.get("floor_y", center.y))
+	var ceiling_y: float = float(spec.get("ceiling_y", floor_y + 3.0))
+	var open_sides: Array = _dict_array(spec, "open_sides")
+	var railing_sides: Array = _dict_array(spec, "railing_sides")
+	var floor_color: Color = Color(0.08, 0.095, 0.105)
+	if floor_y < -1.0:
+		floor_color = Color(0.075, 0.082, 0.078)
+	elif floor_y > 2.0:
+		floor_color = Color(0.085, 0.095, 0.112)
+	_create_box("%sFloorPlate" % room_name, Vector3(center.x, floor_y + 0.015, center.z), Vector3(room_size.x, 0.03, room_size.y), floor_color, false, "deck")
+	_create_box("%sCeilingSlab" % room_name, Vector3(center.x, ceiling_y - 0.015, center.z), Vector3(room_size.x, 0.03, room_size.y), Color(0.062, 0.076, 0.084), true, "ceiling")
+	var wall_height: float = ceiling_y - floor_y
+	var wall_y: float = floor_y + wall_height * 0.5
+	if not open_sides.has("north"):
+		_create_structural_wall("%sNorthWall" % room_name, Vector3(center.x, wall_y, center.z - room_size.y * 0.5), Vector3(room_size.x, wall_height, 0.28))
+	if not open_sides.has("south"):
+		_create_structural_wall("%sSouthWall" % room_name, Vector3(center.x, wall_y, center.z + room_size.y * 0.5), Vector3(room_size.x, wall_height, 0.28))
+	if not open_sides.has("west"):
+		_create_structural_wall("%sWestWall" % room_name, Vector3(center.x - room_size.x * 0.5, wall_y, center.z), Vector3(0.28, wall_height, room_size.y))
+	if not open_sides.has("east"):
+		_create_structural_wall("%sEastWall" % room_name, Vector3(center.x + room_size.x * 0.5, wall_y, center.z), Vector3(0.28, wall_height, room_size.y))
+	for side_value in railing_sides:
+		_create_station_railing("%sRailing_%s" % [room_name, String(side_value)], center, room_size, floor_y, String(side_value))
+
+func _dict_vector2(source: Dictionary, key: String, fallback: Vector2) -> Vector2:
+	var raw_value: Variant = source.get(key, fallback)
+	if raw_value is Vector2:
+		return raw_value
+	return fallback
+
+func _dict_array(source: Dictionary, key: String) -> Array:
+	var raw_value: Variant = source.get(key, [])
+	if raw_value is Array:
+		return raw_value
+	return []
+
+func _create_station_railing(rail_name: String, center: Vector3, size: Vector2, floor_y: float, side: String) -> void:
+	var count: int = max(2, int(size.x / 1.2)) if side == "north" or side == "south" else max(2, int(size.y / 1.2))
+	for index in range(count + 1):
+		var ratio: float = float(index) / float(max(1, count))
+		var x: float = lerp(center.x - size.x * 0.5, center.x + size.x * 0.5, ratio)
+		var z: float = lerp(center.z - size.y * 0.5, center.z + size.y * 0.5, ratio)
+		var post_position: Vector3 = Vector3(x, floor_y + 0.5, center.z + size.y * 0.5)
+		if side == "north":
+			post_position = Vector3(x, floor_y + 0.5, center.z - size.y * 0.5)
+		elif side == "east":
+			post_position = Vector3(center.x + size.x * 0.5, floor_y + 0.5, z)
+		elif side == "west":
+			post_position = Vector3(center.x - size.x * 0.5, floor_y + 0.5, z)
+		_create_box("%sPost%d" % [rail_name, index], post_position, Vector3(0.08, 1.0, 0.08), Color(0.22, 0.42, 0.43), true, "railing")
+
+func _build_station_ramps() -> void:
+	var sub_ramp: Node3D = _create_box("RampGroundToSublevel", Vector3(22.0, -2.0, 14.0), Vector3(3.0, 0.2, 8.944), Color(0.16, 0.18, 0.18), true, "grate")
+	sub_ramp.rotation.x = -0.4636
+	_create_structural_wall("SubRampWestShaftWall", Vector3(20.5, -2.0, 14.0), Vector3(0.28, 3.0, 9.0))
+	_create_structural_wall("SubRampEastShaftWall", Vector3(23.5, -2.0, 14.0), Vector3(0.28, 3.0, 9.0))
+	var upper_ramp: Node3D = _create_box("RampGroundToUpper", Vector3(22.0, 1.8, -17.5), Vector3(3.0, 0.2, 7.886), Color(0.17, 0.19, 0.2), true, "grate")
+	upper_ramp.rotation.x = 0.473
+	_create_structural_wall("UpperRampWestShaftWall", Vector3(20.5, 2.0, -17.5), Vector3(0.28, 4.0, 8.0))
+	_create_structural_wall("UpperRampEastShaftWall", Vector3(23.5, 2.0, -17.5), Vector3(0.28, 4.0, 8.0))
+
+func _build_room_props() -> void:
+	var prop_specs: Array[Dictionary] = [
+		{"name": "MedStretcher", "position": Vector3(-22.0, 0.3, -21.0), "size": Vector3(0.7, 0.6, 1.8), "color": Color(0.85, 0.88, 0.88)},
+		{"name": "MedCabinetWest", "position": Vector3(-25.0, 0.7, -18.0), "size": Vector3(0.6, 1.4, 1.2), "color": Color(0.22, 0.34, 0.36)},
+		{"name": "MedCabinetEast", "position": Vector3(-19.0, 0.7, -23.0), "size": Vector3(0.6, 1.4, 1.2), "color": Color(0.22, 0.34, 0.36)},
+		{"name": "ArmoryRackLong", "position": Vector3(22.0, 0.5, -23.0), "size": Vector3(0.4, 1.0, 3.0), "color": Color(0.24, 0.26, 0.28)},
+		{"name": "ArmoryCrateA", "position": Vector3(20.0, 0.4, -20.0), "size": Vector3(0.9, 0.8, 0.9), "color": Color(0.18, 0.20, 0.22)},
+		{"name": "ArmoryCrateB", "position": Vector3(24.0, 0.4, -24.0), "size": Vector3(0.9, 0.8, 0.9), "color": Color(0.18, 0.20, 0.22)},
+		{"name": "LabConsoleNorth", "position": Vector3(-22.0, 0.6, -4.0), "size": Vector3(2.0, 1.2, 0.5), "color": Color(0.06, 0.10, 0.12)},
+		{"name": "LabConsoleWest", "position": Vector3(-24.0, 0.6, -1.0), "size": Vector3(0.5, 1.2, 2.0), "color": Color(0.06, 0.10, 0.12)},
+		{"name": "LabSpecimenTank", "position": Vector3(-20.0, 0.7, -1.0), "size": Vector3(0.5, 1.4, 0.5), "color": Color(0.32, 0.52, 0.58)},
+		{"name": "EngGeneratorA", "position": Vector3(-4.0, -3.15, 10.0), "size": Vector3(2.0, 1.6, 1.2), "color": Color(0.28, 0.28, 0.22)},
+		{"name": "EngGeneratorB", "position": Vector3(2.0, -3.15, 6.0), "size": Vector3(2.0, 1.6, 1.2), "color": Color(0.28, 0.28, 0.22)},
+		{"name": "EngPipeRun", "position": Vector3(-8.0, -2.95, 12.0), "size": Vector3(0.4, 2.0, 8.0), "color": Color(0.42, 0.38, 0.28)},
+		{"name": "EngCrate", "position": Vector3(6.0, -3.55, 4.0), "size": Vector3(1.2, 0.8, 1.2), "color": Color(0.22, 0.20, 0.16)},
+		{"name": "CafeTableA", "position": Vector3(-2.0, 0.4, -2.0), "size": Vector3(1.6, 0.8, 0.7), "color": Color(0.28, 0.26, 0.22)},
+		{"name": "CafeTableB", "position": Vector3(3.0, 0.4, -4.0), "size": Vector3(1.6, 0.8, 0.7), "color": Color(0.28, 0.26, 0.22)},
+		{"name": "CafeCounter", "position": Vector3(-5.0, 0.5, -6.0), "size": Vector3(0.5, 1.0, 3.0), "color": Color(0.32, 0.30, 0.26)},
+		{"name": "CommandWorkstation", "position": Vector3(0.0, 4.15, -20.0), "size": Vector3(3.0, 1.0, 0.5), "color": Color(0.06, 0.10, 0.14)},
+		{"name": "CommandPillar", "position": Vector3(8.0, 5.15, -18.0), "size": Vector3(0.4, 3.0, 0.4), "color": Color(0.18, 0.22, 0.26)}
+	]
+	for spec in prop_specs:
+		var prop_position: Vector3 = _dict_vector3(spec, "position", Vector3.ZERO)
+		var prop_size: Vector3 = _dict_vector3(spec, "size", Vector3.ONE)
+		var prop_color: Color = _dict_color(spec, "color", Color(0.22, 0.23, 0.24))
+		_create_box(String(spec.get("name", "RoomProp")), prop_position, prop_size, prop_color, true, "metal")
+		if _blocker_intersects_ground_nav(prop_position, prop_size):
+			_register_nav_blocker(prop_position, prop_size)
 
 func _dict_vector3(source: Dictionary, key: String, fallback: Vector3) -> Vector3:
 	var raw_value: Variant = source.get(key, fallback)
@@ -354,6 +474,25 @@ func _create_warning_lights() -> void:
 			sector_lights[sector_id] = []
 		if not emergency_lights_by_sector.has(sector_id):
 			emergency_lights_by_sector[sector_id] = []
+	for spec in _get_station_room_specs():
+		var room_position: Vector3 = _dict_vector3(spec, "position", Vector3.ZERO)
+		var floor_y: float = float(spec.get("floor_y", room_position.y))
+		var ceiling_y: float = float(spec.get("ceiling_y", floor_y + 3.0))
+		var room_sector: String = String(spec.get("sector_id", "arena"))
+		_create_sector_ceiling_light(room_sector, "%sLightFixture" % String(spec.get("name", "Room")), Vector3(room_position.x, ceiling_y - 0.28, room_position.z), 7.5)
+	for sector in _get_mission_sector_definitions():
+		var sector_id_for_emergency: String = String(sector.get("sector_id", "arena"))
+		var sector_position: Vector3 = _dict_vector3(sector, "position", Vector3.ZERO)
+		var emergency_y: float = sector_position.y + 2.75
+		if sector_position.y > 2.0:
+			emergency_y = 6.25
+		elif sector_position.y < -1.0:
+			emergency_y = -1.25
+		_create_emergency_strip_light(sector_id_for_emergency, Vector3(sector_position.x, emergency_y, sector_position.z))
+	if sector_power:
+		sector_power.register_sector("arena", "Prototype Combat Arena", true)
+		_apply_sector_light_state("arena", true, "initial_power")
+	return
 	var fixture_points: Array[Vector3] = [
 		Vector3(0, 3.72, -28),
 		Vector3(0, 3.72, -18),
@@ -454,10 +593,18 @@ func _spawn_player() -> void:
 
 func _spawn_survivor(entry_reason: String) -> void:
 	var entry = facility_state.choose_successor_entry()
+	if survivor_count == 0 and facility_state.rooms.has("entry_airlock"):
+		var entry_room: Dictionary = facility_state.rooms["entry_airlock"]
+		entry = {
+			"room_id": "entry_airlock",
+			"entry_position": entry_room.get("entry_position", Vector3(0.0, 0.05, -44.0)),
+			"explored": entry_room.get("explored", false),
+			"visits": entry_room.get("visits", 0)
+		}
 	if entry.is_empty():
 		entry = {
-			"room_id": "south_hab_pressure_door",
-			"entry_position": Vector3(0, 0.05, 16.6),
+			"room_id": "entry_airlock",
+			"entry_position": Vector3(0, 0.05, -44.0),
 			"explored": false,
 			"visits": 0
 		}
@@ -559,7 +706,7 @@ func _generate_survivor_loadout(entry_reason: String) -> Dictionary:
 		"resources": _roll_starting_resources(),
 		"entry_reason": entry_reason
 	}
-	if mission_deployed:
+	if mission_deployed and selected_role != "custom":
 		_apply_role_to_loadout(loadout, selected_role)
 	return loadout
 
@@ -607,6 +754,7 @@ func _roll_starting_weapon_attachments() -> Array[String]:
 
 func _build_survivor_entry_scenarios() -> void:
 	entry_definitions.clear()
+	entry_definitions.append(_make_entry_definition("entry_airlock", "entry_meridian_airlock", "airlock", "Meridian entry airlock", "door", Vector3(0, 0.05, -44.0), Vector3(0, 1.1, -46.2), Vector3(3.6, 2.2, 0.28), Color(0.13, 0.18, 0.24), true, 0, "door_entry_airlock"))
 	entry_definitions.append(_make_entry_definition("south_hab_pressure_door", "entry_south_hab_pressure_door", "pressure_door", "Hab pressure door", "door", Vector3(0, 0.05, 16.6), Vector3(0, 1.1, 20.62), Vector3(4.2, 2.2, 0.28), Color(0.16, 0.22, 0.24), true, 2, "door_south_hab"))
 	entry_definitions.append(_make_entry_definition("north_service_airlock_tumble", "entry_north_service_airlock", "airlock", "Emergency airlock tumble", "tumble", Vector3(0, 0.05, -16.6), Vector3(0, 1.1, -20.62), Vector3(4.2, 2.2, 0.28), Color(0.13, 0.18, 0.24), true, 1, "door_north_service"))
 	entry_definitions.append(_make_entry_definition("west_maintenance_crawl", "entry_west_maintenance_crawl", "crawlspace", "Maintenance crawlspace", "crawl", Vector3(-16.6, 0.05, 0), Vector3(-20.62, 0.62, 0), Vector3(0.18, 0.72, 2.3), Color(0.06, 0.09, 0.1), false, 1))
@@ -985,12 +1133,12 @@ func _build_mission_briefing() -> void:
 	briefing_screen.deploy_pressed.connect(_on_briefing_deploy_pressed)
 	add_child(briefing_screen)
 
-func _on_briefing_deploy_pressed(role_id: String) -> void:
-	selected_role = role_id
+func _on_briefing_deploy_pressed(weapon_id: String, equipment_id: String, passive_id: String) -> void:
+	selected_role = "custom"
 	mission_deployed = true
 	if player:
 		var loadout: Dictionary = player.survivor_loadout.duplicate(true)
-		_apply_role_to_loadout(loadout, selected_role)
+		_apply_equipment_loadout(loadout, weapon_id, equipment_id, passive_id)
 		player.apply_survivor_loadout(loadout)
 	if briefing_screen and is_instance_valid(briefing_screen):
 		briefing_screen.queue_free()
@@ -999,6 +1147,40 @@ func _on_briefing_deploy_pressed(role_id: String) -> void:
 		objective_system.start_run()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	GameEvents.reset_run()
+
+func _apply_equipment_loadout(loadout: Dictionary, weapon_id: String, equipment_id: String, passive_id: String) -> void:
+	loadout["weapon_id"] = weapon_id
+	loadout["role"] = "custom"
+	loadout.erase("reload_speed_mult")
+	loadout.erase("can_revive_corpses")
+	loadout.erase("movement_penalty_mult")
+	loadout.erase("damage_resist")
+	loadout.erase("noise_mult")
+	loadout.erase("treatment_speed")
+	var resources: Dictionary = {}
+	var raw_resources: Variant = loadout.get("resources", {})
+	if raw_resources is Dictionary:
+		resources = raw_resources.duplicate(true)
+	match equipment_id:
+		"trauma_kit":
+			resources["trauma_kit"] = int(resources.get("trauma_kit", 0)) + 2
+		"stim_injector":
+			resources["injector"] = int(resources.get("injector", 0)) + 2
+		"ammo_cache":
+			loadout["extra_ammo"] = int(loadout.get("extra_ammo", 0)) + 90
+		"med_spray":
+			resources["med_spray"] = int(resources.get("med_spray", 0)) + 3
+	match passive_id:
+		"heavy_armor":
+			loadout["movement_penalty_mult"] = 0.82
+			loadout["damage_resist"] = 0.25
+		"stealth_liner":
+			loadout["noise_mult"] = 0.45
+		"medic_rig":
+			loadout["treatment_speed"] = 2.2
+		"ammo_harness":
+			loadout["extra_ammo"] = int(loadout.get("extra_ammo", 0)) + 60
+	loadout["resources"] = resources
 
 func _get_role_definitions() -> Array[Dictionary]:
 	return [
@@ -1069,15 +1251,18 @@ func _get_role_definition(role_id: String) -> Dictionary:
 
 func _get_mission_sector_definitions() -> Array[Dictionary]:
 	return [
-		{"sector_id": "medical_bay", "label": "Medical Bay", "position": Vector3(0.0, 0.05, -26.0)},
-		{"sector_id": "reactor_control", "label": "Reactor Control", "position": Vector3(0.0, 0.05, -26.0)},
-		{"sector_id": "cargo_processing", "label": "Cargo Processing", "position": Vector3(0.0, 0.05, 26.0)},
-		{"sector_id": "hab_commons", "label": "Hab Commons", "position": Vector3(0.0, 0.05, 26.0)},
-		{"sector_id": "security_spine", "label": "Security Spine", "position": Vector3(22.0, 0.05, 0.0)},
-		{"sector_id": "comms_nook", "label": "Comms Nook", "position": Vector3(-22.0, 0.05, 0.0)}
+		{"sector_id": "medical_wing", "label": "Medical Wing", "position": Vector3(-22.0, 0.05, -20.0)},
+		{"sector_id": "armory", "label": "Armory", "position": Vector3(22.0, 0.05, -22.0)},
+		{"sector_id": "lab_alpha", "label": "Laboratory Alpha", "position": Vector3(-22.0, 0.05, -2.0)},
+		{"sector_id": "engineering", "label": "Engineering", "position": Vector3(-2.0, -3.95, 8.0)},
+		{"sector_id": "command", "label": "Command", "position": Vector3(2.0, 3.65, -20.0)},
+		{"sector_id": "archives", "label": "Research Archives", "position": Vector3(-14.0, 3.65, -20.0)}
 	]
 
 func _build_interior_partitions() -> void:
+	_build_mission_doors()
+	_build_navigation_region()
+	return
 	var wall_specs: Array[Dictionary] = [
 		{"name": "NorthSpineWestWallA", "position": Vector3(-5.2, 1.85, -29.0), "size": Vector3(0.42, 3.45, 9.5)},
 		{"name": "NorthSpineWestWallB", "position": Vector3(-5.2, 1.85, -14.0), "size": Vector3(0.42, 3.45, 6.0)},
@@ -1159,12 +1344,12 @@ func _create_station_doorway(doorway_name: String, floor_position: Vector3, alon
 func _build_mission_doors() -> void:
 	mission_doors_by_sector.clear()
 	var door_specs: Array[Dictionary] = [
-		{"door_id": "door_medical_bay", "sector_id": "medical_bay", "name": "MissionDoorMedicalBay", "position": Vector3(-1.45, 1.22, -22.0), "size": Vector3(1.0, 2.45, 0.3), "glow_offset": Vector3(0.0, 0.0, 0.02), "glow_size": Vector3(1.15, 2.6, 0.04), "color": Color(0.14, 0.22, 0.25)},
-		{"door_id": "door_reactor_control", "sector_id": "reactor_control", "name": "MissionDoorReactorControl", "position": Vector3(1.45, 1.22, -22.0), "size": Vector3(1.0, 2.45, 0.3), "glow_offset": Vector3(0.0, 0.0, 0.02), "glow_size": Vector3(1.15, 2.6, 0.04), "color": Color(0.2, 0.14, 0.11)},
-		{"door_id": "door_cargo_processing", "sector_id": "cargo_processing", "name": "MissionDoorCargoProcessing", "position": Vector3(1.45, 1.22, 22.0), "size": Vector3(1.0, 2.45, 0.3), "glow_offset": Vector3(0.0, 0.0, -0.02), "glow_size": Vector3(1.15, 2.6, 0.04), "color": Color(0.2, 0.18, 0.12)},
-		{"door_id": "door_hab_commons", "sector_id": "hab_commons", "name": "MissionDoorHabCommons", "position": Vector3(-1.45, 1.22, 22.0), "size": Vector3(1.0, 2.45, 0.3), "glow_offset": Vector3(0.0, 0.0, -0.02), "glow_size": Vector3(1.15, 2.6, 0.04), "color": Color(0.14, 0.18, 0.24)},
-		{"door_id": "door_security_spine", "sector_id": "security_spine", "name": "MissionDoorSecuritySpine", "position": Vector3(17.0, 1.22, -1.45), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.12, 0.2, 0.25)},
-		{"door_id": "door_comms_nook", "sector_id": "comms_nook", "name": "MissionDoorCommsNook", "position": Vector3(-17.0, 1.22, 1.45), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.1, 0.22, 0.24)}
+		{"door_id": "door_medical_wing", "sector_id": "medical_wing", "name": "MissionDoorMedicalWing", "position": Vector3(-16.0, 1.22, -20.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.14, 0.22, 0.25)},
+		{"door_id": "door_armory", "sector_id": "armory", "name": "MissionDoorArmory", "position": Vector3(19.0, 1.22, -22.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.2, 0.14, 0.11)},
+		{"door_id": "door_lab_alpha", "sector_id": "lab_alpha", "name": "MissionDoorLabAlpha", "position": Vector3(-16.0, 1.22, -2.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.1, 0.22, 0.24)},
+		{"door_id": "door_engineering", "sector_id": "engineering", "name": "MissionDoorEngineering", "position": Vector3(18.0, 1.22, 10.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.2, 0.18, 0.12)},
+		{"door_id": "door_command", "sector_id": "command", "name": "MissionDoorCommand", "position": Vector3(20.55, 4.82, -14.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.12, 0.2, 0.25)},
+		{"door_id": "door_archives", "sector_id": "archives", "name": "MissionDoorArchives", "position": Vector3(-8.5, 4.82, -20.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.14, 0.18, 0.24)}
 	]
 	for spec in door_specs:
 		var door_id: String = String(spec.get("door_id", "mission_door"))
@@ -1190,12 +1375,12 @@ func _build_mission_doors() -> void:
 
 func _build_vent_markers() -> void:
 	var vent_specs: Array[Dictionary] = [
-		{"name": "SwarmerVentNorthWest", "position": Vector3(-12.0, 1.2, -35.62), "size": Vector3(0.72, 0.54, 0.12)},
-		{"name": "SwarmerVentNorthEast", "position": Vector3(18.0, 1.2, -35.62), "size": Vector3(0.72, 0.54, 0.12)},
-		{"name": "SwarmerVentSouthWest", "position": Vector3(-20.0, 1.2, 35.62), "size": Vector3(0.72, 0.54, 0.12)},
-		{"name": "SwarmerVentSouthEast", "position": Vector3(12.0, 1.2, 35.62), "size": Vector3(0.72, 0.54, 0.12)},
-		{"name": "SwarmerVentWestMid", "position": Vector3(-35.62, 1.2, -8.0), "size": Vector3(0.12, 0.54, 0.72)},
-		{"name": "SwarmerVentEastMid", "position": Vector3(35.62, 1.2, 10.0), "size": Vector3(0.12, 0.54, 0.72)}
+		{"name": "SwarmerVentNorthSpine", "position": Vector3(-1.9, 1.2, -28.0), "size": Vector3(0.12, 0.54, 0.72)},
+		{"name": "SwarmerVentMedical", "position": Vector3(-16.2, 1.2, -20.0), "size": Vector3(0.12, 0.54, 0.72)},
+		{"name": "SwarmerVentArmory", "position": Vector3(17.8, 1.2, -22.0), "size": Vector3(0.12, 0.54, 0.72)},
+		{"name": "SwarmerVentLab", "position": Vector3(-16.2, 1.2, -2.0), "size": Vector3(0.12, 0.54, 0.72)},
+		{"name": "SwarmerVentEngineeringSub", "position": Vector3(-2.0, -2.8, 15.8), "size": Vector3(0.72, 0.54, 0.12)},
+		{"name": "SwarmerVentCommandUpper", "position": Vector3(2.0, 4.8, -15.2), "size": Vector3(0.72, 0.54, 0.12)}
 	]
 	for spec in vent_specs:
 		var vent_position: Vector3 = _dict_vector3(spec, "position", Vector3.ZERO)
