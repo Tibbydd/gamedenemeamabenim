@@ -4,6 +4,7 @@ class_name WeaponHologramHUD
 var weapon_name: String = ""
 var ammo_current: int = 0
 var ammo_reserve: int = 0
+var magazine_size: int = 30
 var weapon_condition: float = 1.0
 var weapon_family: String = ""
 var is_reloading: bool = false
@@ -11,20 +12,20 @@ var is_reloading: bool = false
 var _font: Font
 
 func _ready() -> void:
-	# Positioned beside the weapon — center-right, vertically centered on weapon area
 	set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
 	offset_left = -290.0
 	offset_right = -18.0
 	offset_top = 20.0
-	offset_bottom = 110.0
+	offset_bottom = 120.0
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_font = ThemeDB.fallback_font
 	queue_redraw()
 
-func refresh(wname: String, cur: int, res: int, cond: float, family: String, reloading: bool) -> void:
+func refresh(wname: String, cur: int, res: int, mag_sz: int, cond: float, family: String, reloading: bool) -> void:
 	weapon_name = wname
 	ammo_current = cur
 	ammo_reserve = res
+	magazine_size = max(1, mag_sz)
 	weapon_condition = cond
 	weapon_family = family
 	is_reloading = reloading
@@ -38,37 +39,73 @@ func _draw() -> void:
 	var dim := Color(0.32, 0.62, 0.52, 0.55)
 	var bright := Color(0.88, 1.0, 0.94, 0.95)
 	var w := size.x
-	var lx := 10.0  # left-edge x for all elements
+	var lx := 10.0
 
-	# Vertical accent line on left edge
-	draw_line(Vector2(lx, 4.0), Vector2(lx, 52.0), teal, 2.0)
+	# Vertical accent line
+	draw_line(Vector2(lx, 4.0), Vector2(lx, 62.0), teal, 2.0)
 
-	# Weapon name — small, dimmed, uppercase
-	var name_display := weapon_name.to_upper()
-	draw_string(_font, Vector2(lx + 8.0, 16.0), name_display,
+	# Weapon name
+	draw_string(_font, Vector2(lx + 8.0, 16.0), weapon_name.to_upper(),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, dim)
 
-	# Ammo count — large and bright
-	var ammo_str := str(ammo_current) if not is_reloading else "--"
-	draw_string(_font, Vector2(lx + 8.0, 44.0), ammo_str,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 30, bright)
+	# Magazine icon
+	var fill_ratio := float(ammo_current) / float(magazine_size) if not is_reloading else 1.0
+	_draw_magazine_icon(Vector2(lx + 8.0, 22.0), fill_ratio)
 
-	# Reserve ammo — smaller, beside ammo count
-	var cur_width := _font.get_string_size(ammo_str, HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x
-	draw_string(_font, Vector2(lx + 10.0 + cur_width, 40.0), "/ %d" % ammo_reserve,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 14, dim)
+	# Reserve as mag count — "×3"
+	var mag_count := int(ammo_reserve) / int(magazine_size) if magazine_size > 0 else 0
+	var res_str := ("RELOADING" if is_reloading else "×%d" % mag_count)
+	draw_string(_font, Vector2(lx + 32.0, 52.0), res_str,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, dim)
 
-	# Condition bar — thin strip below, 60px wide
-	var bar_y := 58.0
+	# Condition bar
+	var bar_y := 64.0
 	var bar_w := 60.0
 	var bar_h := 3.0
 	draw_rect(Rect2(lx + 8.0, bar_y, bar_w, bar_h), Color(0.1, 0.15, 0.12, 0.5))
 	var cond_color := Color(0.28, 0.88, 0.52).lerp(Color(0.88, 0.22, 0.12), 1.0 - weapon_condition)
 	draw_rect(Rect2(lx + 8.0, bar_y, bar_w * weapon_condition, bar_h), cond_color)
 
-	# Family tag — tiny, top-right corner
+	# Family tag
 	draw_string(_font, Vector2(w - 4.0, 16.0), weapon_family.to_upper(),
 		HORIZONTAL_ALIGNMENT_RIGHT, -1, 10, dim)
 
-	# Horizontal connector lines (hologram mount feel)
+	# Connector line
 	draw_line(Vector2(lx + 6.0, 22.0), Vector2(lx + 6.0 + 30.0, 22.0), dim, 0.8)
+
+func _draw_magazine_icon(top_left: Vector2, fill_ratio: float) -> void:
+	# Magazine silhouette: 14 wide × 30 tall body + 4 tall feed lip on top
+	var bw := 14.0
+	var bh := 28.0
+	var lip_h := 4.0
+	var lip_w := 8.0
+	var bx := top_left.x
+	var by := top_left.y
+
+	# Feed lip (narrow top)
+	draw_rect(Rect2(bx + (bw - lip_w) * 0.5, by, lip_w, lip_h), Color(0.18, 0.28, 0.24, 0.7))
+
+	# Body outline
+	draw_rect(Rect2(bx, by + lip_h, bw, bh), Color(0.06, 0.10, 0.09, 0.85))
+	draw_rect(Rect2(bx, by + lip_h, bw, bh), Color(0.22, 0.42, 0.38, 0.6), false, 1.0)
+
+	# Fill — grows from bottom up
+	var fill_h := bh * clamp(fill_ratio, 0.0, 1.0)
+	var fill_y := by + lip_h + (bh - fill_h)
+	var fill_color: Color
+	if fill_ratio > 0.65:
+		fill_color = Color(0.22, 0.82, 0.58, 0.88)
+	elif fill_ratio > 0.35:
+		fill_color = Color(0.85, 0.78, 0.18, 0.88)
+	elif fill_ratio > 0.15:
+		fill_color = Color(0.92, 0.42, 0.12, 0.88)
+	else:
+		fill_color = Color(0.88, 0.12, 0.08, 0.90)
+	if fill_h > 0.5:
+		draw_rect(Rect2(bx + 1.0, fill_y, bw - 2.0, fill_h - 1.0), fill_color)
+
+	# Tick marks — 4 horizontal lines dividing the body into quarters
+	for i in range(1, 4):
+		var tick_y := by + lip_h + bh * (float(i) / 4.0)
+		draw_line(Vector2(bx + 2.0, tick_y), Vector2(bx + bw - 2.0, tick_y),
+			Color(0.0, 0.0, 0.0, 0.35), 0.8)

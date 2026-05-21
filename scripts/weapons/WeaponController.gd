@@ -122,11 +122,9 @@ func start_reload() -> bool:
 	if owner_health and not owner_health.can_hold_weapon():
 		return false
 	if current_ammo > 0 and _uses_partial_magazines():
-		var dropped_rounds: int = int(max(0, current_ammo - 1))
-		if dropped_rounds > 0:
-			_drop_partial_magazine(dropped_rounds)
-		current_ammo = 1
-		chamber_loaded = true
+		_drop_partial_magazine(current_ammo)
+		current_ammo = 0
+		chamber_loaded = false
 	is_reloading = true
 	var handling: float = 1.0
 	if owner_health:

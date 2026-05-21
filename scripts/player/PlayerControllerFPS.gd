@@ -58,11 +58,11 @@ var weapon_default_position: Vector3 = Vector3(0.34, -0.34, -0.62)
 var weapon_obstructed_position: Vector3 = Vector3(0.12, -0.12, -0.28)
 var barrel_obstruction: float = 0.0
 var barrel_push_side: float = 0.0
-var recoil_recovery_pitch_remaining: float = 0.0
-var recoil_recovery_yaw_remaining: float = 0.0
 var recoil_hold_timer: float = 0.0
 var weapon_kick_offset: Vector3 = Vector3.ZERO
 var weapon_kick_rotation: Vector3 = Vector3.ZERO
+var camera_shake: float = 0.0
+var laser_dot: OmniLight3D = null
 var current_weapon_visual_id: String = ""
 var hit_bob_timer: float = 0.0
 var hit_bob_duration: float = 0.0
@@ -1260,26 +1260,70 @@ func _try_trauma_or_splint() -> void:
 			return
 	health.start_trauma_kit(3.0 * treatment_speed_modifier)
 
+func _slot_index_for_weapon_id(weapon_id: String) -> int:
+	var wd := WeaponData.create_weapon(weapon_id)
+	return _slot_index_for_family(wd.weapon_family if wd else "sidearm")
+
+func _slot_index_for_family(family: String) -> int:
+	if family == "ar" or family == "lmg":
+		return 0
+	if family == "sidearm" or family == "smg":
+		return 1
+	return 2  # thermal / support
+
 func equip_found_weapon(weapon_id: String) -> void:
-	if weapon:
-		equipped_weapon_id = weapon_id
-		_replace_equipped_weapon_with_state(_make_weapon_state(equipped_weapon_id), true)
-		_reinstall_known_cross_weapon_attachments()
-		_force_weapon_ready(equipped_weapon_id)
-		survivor_loadout["weapon_id"] = equipped_weapon_id
-		survivor_loadout.erase("weapon_state")
-		if comms:
-			comms.announce("Weapon found: %s." % weapon.data.weapon_name)
+	if not weapon:
+		return
+	_ensure_weapon_inventory()
+	var target_slot: int = _slot_index_for_weapon_id(weapon_id)
+	var old_state: Dictionary = weapon_slots[target_slot].duplicate(true)
+	var new_state := _make_weapon_state(weapon_id)
+	# Drop whatever was in that slot (if occupied and different)
+	if not old_state.is_empty() and String(old_state.get("weapon_id", "")) != weapon_id:
+		var drop_pos := global_position + Vector3.UP * 0.4
+		if camera:
+			drop_pos = global_position + -camera.global_transform.basis.z * 0.6 + Vector3.UP * 0.32
+		_spawn_weapon_pickup_from_state(old_state, drop_pos)
+	weapon_slots[target_slot] = new_state
+	_update_equipped_weapon_slot_state()
+	equipped_weapon_slot = target_slot
+	weapon.apply_weapon_state(new_state)
+	equipped_weapon_id = weapon.data.weapon_id
+	_reinstall_known_cross_weapon_attachments()
+	_force_weapon_ready(equipped_weapon_id)
+	survivor_loadout["weapon_id"] = equipped_weapon_id
+	survivor_loadout.erase("weapon_state")
+	var slot_name: String = ["PRIMARY", "SECONDARY", "SUPPORT"][target_slot]
+	if comms:
+		comms.announce("%s: %s" % [slot_name, weapon.data.weapon_name])
 
 func equip_found_weapon_state(state: Dictionary) -> void:
 	if not weapon:
 		return
-	_replace_equipped_weapon_with_state(state, true)
+	_ensure_weapon_inventory()
+	var fam: String = ""
+	var wd_id: String = String(state.get("weapon_id", ""))
+	if not wd_id.is_empty():
+		var wd := WeaponData.create_weapon(wd_id)
+		if wd:
+			fam = wd.weapon_family
+	var target_slot: int = _slot_index_for_family(fam)
+	var old_state: Dictionary = weapon_slots[target_slot].duplicate(true)
+	if not old_state.is_empty() and String(old_state.get("weapon_id", "")) != wd_id:
+		var drop_pos := global_position + Vector3.UP * 0.4
+		if camera:
+			drop_pos = global_position + -camera.global_transform.basis.z * 0.6 + Vector3.UP * 0.32
+		_spawn_weapon_pickup_from_state(old_state, drop_pos)
+	weapon_slots[target_slot] = state.duplicate(true)
+	_update_equipped_weapon_slot_state()
+	equipped_weapon_slot = target_slot
+	weapon.apply_weapon_state(state)
+	equipped_weapon_id = weapon.data.weapon_id
 	dropped_weapon_pickup = null
 	survivor_loadout["weapon_id"] = weapon.data.weapon_id
 	survivor_loadout["weapon_state"] = weapon.get_weapon_state()
 	if comms:
-		comms.announce("Recovered weapon: %s." % weapon.data.weapon_name)
+		comms.announce("Recovered: %s" % weapon.data.weapon_name)
 
 func install_weapon_attachment(attachment_id: String) -> void:
 	if not weapon:
@@ -1411,25 +1455,31 @@ func _setup_flashlight(new_type: String) -> void:
 	flashlight.light_energy = 2.2
 	flashlight.shadow_enabled = true
 	if new_type == "handheld":
-		flashlight.position = Vector3(0.26, -0.22, -0.28)
-		flashlight.rotation_degrees = Vector3(-2.0, 0.0, 0.0)
+		# Left shoulder / offhand — well clear of the gun body on the right
+		flashlight.position = Vector3(-0.32, 0.04, -0.10)
+		flashlight.rotation_degrees = Vector3(-1.0, 8.0, 0.0)
 		camera.add_child(flashlight)
 	elif new_type == "vest":
-		flashlight.position = Vector3(0.22, -0.55, -0.18)
-		flashlight.spot_angle = 42.0
-		flashlight.light_energy = 1.7
+		# Chest-center, wide flood
+		flashlight.position = Vector3(0.0, -0.28, -0.12)
+		flashlight.spot_angle = 44.0
+		flashlight.light_energy = 1.6
 		camera.add_child(flashlight)
 	elif new_type == "helmet":
-		flashlight.position = Vector3(0.0, 0.06, -0.18)
+		# Left side of helmet — clear of gun shadow
+		flashlight.position = Vector3(-0.28, 0.10, -0.12)
 		flashlight.spot_angle = 34.0
 		flashlight.light_energy = 2.5
+		flashlight.rotation_degrees = Vector3(0.0, 6.0, 0.0)
 		camera.add_child(flashlight)
 	elif new_type == "weapon_mount":
-		flashlight.position = Vector3(0.0, 0.03, -0.5)
-		flashlight.spot_range = 14.0
-		flashlight.spot_angle = 24.0
+		# Under barrel, forward of handguard so it clears the gun body
+		flashlight.position = Vector3(0.0, -0.10, -0.72)
+		flashlight.spot_range = 15.0
+		flashlight.spot_angle = 22.0
 		weapon_pivot.add_child(flashlight)
 	else:
+		flashlight.position = Vector3(-0.30, 0.04, -0.10)
 		camera.add_child(flashlight)
 
 func _get_inventory_summary() -> String:
@@ -1442,12 +1492,12 @@ func _get_inventory_summary() -> String:
 	if mental and mental.corruption >= 70.0 and randf() < 0.08:
 		route_noise = " / DOOR STATE: OPEN?"
 	_ensure_weapon_inventory()
+	var slot_labels: Array[String] = ["PRI", "SEC", "SUP"]
 	var weapon_slots_text: Array[String] = []
 	for index in range(weapon_slots.size()):
-		var slot_prefix: String = ">"
-		if index != equipped_weapon_slot:
-			slot_prefix = " "
-		weapon_slots_text.append("%s%d %s" % [slot_prefix, index + 1, _weapon_state_label(weapon_slots[index])])
+		var slot_prefix: String = ">" if index == equipped_weapon_slot else " "
+		var label: String = slot_labels[index] if index < slot_labels.size() else str(index + 1)
+		weapon_slots_text.append("%s%s %s" % [slot_prefix, label, _weapon_state_label(weapon_slots[index])])
 	return "LOADOUT: %s / %s / %s / %s / CARRY %d/%d%s\n%s" % [background.to_upper(), weapon_text, light_text, comms_text, resource_count, carry_capacity, route_noise, "   ".join(weapon_slots_text)]
 
 func _get_compass_summary() -> String:
@@ -1500,7 +1550,8 @@ func _equip_weapon_slot(slot_index: int) -> void:
 	weapon.apply_weapon_state(slot_state)
 	equipped_weapon_id = weapon.data.weapon_id
 	_force_weapon_ready(equipped_weapon_id)
-	_show_diegetic_notice("EQUIPPED SLOT %d\n%s" % [slot_index + 1, weapon.data.weapon_name], 1.5)
+	var slot_name: String = (["PRIMARY", "SECONDARY", "SUPPORT"])[slot_index] if slot_index < 3 else "SLOT %d" % (slot_index + 1)
+	_show_diegetic_notice("%s\n%s" % [slot_name, weapon.data.weapon_name], 1.5)
 
 func _replace_equipped_weapon_with_state(new_state: Dictionary, drop_old: bool) -> void:
 	_ensure_weapon_inventory()
@@ -1638,15 +1689,19 @@ func _trigger_hit_bob(amount: float) -> void:
 func _update_hit_bob(delta: float) -> void:
 	if not camera:
 		return
+	var t: float = Time.get_ticks_msec() * 0.001
+	var shake_offset := Vector3(sin(t * 19.6) * camera_shake, cos(t * 29.8) * camera_shake * 0.6, 0.0)
 	if hit_bob_timer <= 0.0:
-		camera.position = camera.position.lerp(Vector3.ZERO, clamp(delta * 12.0, 0.0, 1.0))
+		var base_pos := camera.position - shake_offset
+		base_pos = base_pos.lerp(Vector3.ZERO, clamp(delta * 12.0, 0.0, 1.0))
+		camera.position = base_pos + shake_offset
 		if intro_lock_timer <= 0.0:
 			camera.rotation.z = lerp(camera.rotation.z, 0.0, clamp(delta * 12.0, 0.0, 1.0))
 		return
 	hit_bob_timer = max(0.0, hit_bob_timer - delta)
 	var progress: float = 1.0 - hit_bob_timer / max(0.01, hit_bob_duration)
 	var wave: float = sin(progress * PI)
-	camera.position = Vector3(hit_bob_side * 0.025 * hit_bob_strength * wave, -0.018 * hit_bob_strength * wave, 0.0)
+	camera.position = Vector3(hit_bob_side * 0.025 * hit_bob_strength * wave, -0.018 * hit_bob_strength * wave, 0.0) + shake_offset
 	if intro_lock_timer <= 0.0:
 		camera.rotation.z = hit_bob_side * deg_to_rad(3.4) * hit_bob_strength * wave
 
@@ -1870,34 +1925,17 @@ func _reinstall_known_cross_weapon_attachments() -> void:
 func _on_weapon_recoil_requested(pitch_radians: float, yaw_radians: float, rearward_kick: float) -> void:
 	var pitch_kick := pitch_radians * recoil_trait_modifier
 	var yaw_kick := yaw_radians * recoil_trait_modifier
-	pitch = clamp(pitch + pitch_kick * 5.2, deg_to_rad(-82.0), deg_to_rad(82.0))
-	yaw += yaw_kick * 1.6
-	rotation.y = yaw
-	head.rotation.x = pitch
-	recoil_recovery_pitch_remaining += pitch_kick * 5.2
-	recoil_recovery_yaw_remaining += yaw_kick * 1.6
-	recoil_hold_timer = 0.16
-	weapon_kick_offset += Vector3(0.0, rearward_kick * 0.18, rearward_kick * 1.4)
-	weapon_kick_rotation += Vector3(pitch_kick * 4.2, yaw_kick * 2.8, -yaw_kick * 2.2)
+	recoil_hold_timer = 0.14
+	weapon_kick_offset += Vector3(0.0, rearward_kick * 0.28, rearward_kick * 2.0)
+	weapon_kick_rotation += Vector3(pitch_kick * 8.5, yaw_kick * 4.2, -yaw_kick * 3.2)
+	camera_shake = min(camera_shake + abs(pitch_kick) * 0.55 + abs(yaw_kick) * 0.18, 0.055)
 
 func _recover_recoil(delta: float) -> void:
 	recoil_hold_timer = max(0.0, recoil_hold_timer - delta)
-	if recoil_hold_timer > 0.0:
-		weapon_kick_offset = weapon_kick_offset.move_toward(Vector3.ZERO, delta * 0.38)
-		weapon_kick_rotation = weapon_kick_rotation.move_toward(Vector3.ZERO, delta * 1.4)
-		return
-	if recoil_recovery_pitch_remaining > 0.0001:
-		var pitch_recovery: float = min(recoil_recovery_pitch_remaining, delta * 0.18)
-		pitch = clamp(pitch - pitch_recovery, deg_to_rad(-82.0), deg_to_rad(82.0))
-		head.rotation.x = pitch
-		recoil_recovery_pitch_remaining -= pitch_recovery
-	if abs(recoil_recovery_yaw_remaining) > 0.0001:
-		var yaw_recovery: float = sign(recoil_recovery_yaw_remaining) * min(abs(recoil_recovery_yaw_remaining), delta * 0.12)
-		yaw -= yaw_recovery
-		rotation.y = yaw
-		recoil_recovery_yaw_remaining -= yaw_recovery
-	weapon_kick_offset = weapon_kick_offset.move_toward(Vector3.ZERO, delta * 0.38)
-	weapon_kick_rotation = weapon_kick_rotation.move_toward(Vector3.ZERO, delta * 1.4)
+	var kick_recovery_speed: float = 0.55 if recoil_hold_timer > 0.0 else 2.2
+	weapon_kick_offset = weapon_kick_offset.move_toward(Vector3.ZERO, delta * kick_recovery_speed * 0.5)
+	weapon_kick_rotation = weapon_kick_rotation.move_toward(Vector3.ZERO, delta * kick_recovery_speed * 4.0)
+	camera_shake = move_toward(camera_shake, 0.0, delta * 0.14)
 
 func _on_weapon_condition_changed(condition: float) -> void:
 	if not weapon_pivot:
@@ -2078,11 +2116,37 @@ func _update_barrel_crosshair() -> void:
 	if not crosshair_ctrl or not camera or not muzzle_marker:
 		return
 	var muzzle_world := muzzle_marker.global_position
-	var forward := -camera.global_transform.basis.z
-	var barrel_far := muzzle_world + forward * 50.0
+	# Use weapon's actual forward so the crosshair follows recoil kick
+	var weapon_forward := -muzzle_marker.global_transform.basis.z
+	var barrel_far := muzzle_world + weapon_forward * 50.0
 	var screen_pos := camera.unproject_position(barrel_far)
 	var screen_center := get_viewport().get_visible_rect().size * 0.5
 	crosshair_ctrl.barrel_offset = screen_pos - screen_center
+	_update_laser_dot(muzzle_world, weapon_forward)
+
+func _update_laser_dot(muzzle_world: Vector3, weapon_forward: Vector3) -> void:
+	var has_laser: bool = weapon != null and weapon.has_attachment("laser_pointer")
+	if not has_laser:
+		if laser_dot and is_instance_valid(laser_dot):
+			laser_dot.visible = false
+		return
+	if not laser_dot or not is_instance_valid(laser_dot):
+		laser_dot = OmniLight3D.new()
+		laser_dot.name = "LaserDot"
+		laser_dot.light_color = Color(1.0, 0.08, 0.04)
+		laser_dot.omni_range = 0.28
+		laser_dot.light_energy = 3.8
+		laser_dot.shadow_enabled = false
+		add_child(laser_dot)
+	var query := PhysicsRayQueryParameters3D.create(muzzle_world, muzzle_world + weapon_forward * 40.0)
+	query.exclude = [get_rid()]
+	query.collision_mask = 1 | 2
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		laser_dot.visible = false
+	else:
+		laser_dot.visible = true
+		laser_dot.global_position = hit["position"] + hit["normal"] * 0.02
 
 func _update_interact_prompt() -> void:
 	if not interact_prompt_label or not camera:
@@ -2147,12 +2211,13 @@ func _refresh_weapon_hologram() -> void:
 			weapon.data.weapon_name,
 			weapon.current_ammo,
 			weapon.reserve_ammo,
+			weapon.data.magazine_size,
 			weapon.weapon_condition,
 			weapon.data.weapon_family,
 			weapon.is_reloading
 		)
 	else:
-		weapon_hologram.refresh("", 0, 0, 1.0, "", false)
+		weapon_hologram.refresh("", 0, 0, 0, 1.0, "", false)
 
 func _update_crosshair_spread() -> void:
 	if not crosshair_ctrl:
