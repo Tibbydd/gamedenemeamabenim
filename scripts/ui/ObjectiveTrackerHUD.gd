@@ -23,6 +23,18 @@ func set_extraction_available(world_position: Vector3) -> void:
 	extraction_position = world_position
 	queue_redraw()
 
+func get_objective_count() -> int:
+	return objectives.size()
+
+func get_done_count() -> int:
+	var done_count: int = 0
+	for objective_value in objectives:
+		if objective_value is Dictionary:
+			var objective: Dictionary = objective_value
+			if String(objective.get("status", "pending")) == "done":
+				done_count += 1
+	return done_count
+
 func _draw() -> void:
 	var font: Font = get_theme_default_font()
 	if not font:

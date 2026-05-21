@@ -20,6 +20,12 @@ const ALIASES: Dictionary = {
 	"mag_drop": "reload_click",
 }
 
+const UI_SOUND_IDS: Array[String] = [
+	"heartbeat",
+	"telemetry_ping",
+	"comms"
+]
+
 var _3d_pool: Array[AudioStreamPlayer3D] = []
 var _ui_pool: Array[AudioStreamPlayer] = []
 var _3d_cursor: int = 0
@@ -41,8 +47,25 @@ func _ready() -> void:
 	GameEvents.sound_requested.connect(_on_sound_requested)
 
 func _on_sound_requested(sound_id: String, position: Vector3, _intensity: float) -> void:
-	var resolved := ALIASES.get(sound_id, sound_id) as String
-	play_3d(resolved, position)
+	var resolved: String = String(ALIASES.get(sound_id, sound_id))
+	if SoundSynthesizer.get_stream(resolved) == null:
+		resolved = _resolve_fallback_sound(sound_id)
+	if _is_ui_sound(sound_id):
+		play_ui(resolved)
+	else:
+		play_3d(resolved, position)
+
+func _resolve_fallback_sound(sound_id: String) -> String:
+	if sound_id.begins_with("hazard_") or sound_id.begins_with("pressure_dump"):
+		return "enemy_death"
+	if sound_id == "door_forced" or sound_id == "sector_bulkhead_release" or sound_id.begins_with("door_forced"):
+		return "reload_click"
+	if sound_id in ["button", "telemetry_ping", "heartbeat", "comms", "pickup", "equipment_pickup"] or sound_id.begins_with("equipment_pickup"):
+		return "interact"
+	return "interact"
+
+func _is_ui_sound(sound_id: String) -> bool:
+	return UI_SOUND_IDS.has(sound_id)
 
 func play_3d(sound_id: String, world_position: Vector3, pitch_scale: float = 1.0) -> void:
 	var stream: AudioStream = SoundSynthesizer.get_stream(sound_id)

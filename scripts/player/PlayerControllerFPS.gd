@@ -88,6 +88,10 @@ var event_log: Array[String] = []
 var treatment_speed_modifier: float = 1.0
 var pain_spread_modifier: float = 1.0
 var recoil_trait_modifier: float = 1.0
+var run_kills: int = 0
+var run_objectives_done: int = 0
+var run_time_elapsed: float = 0.0
+var debrief_screen: MissionDebriefScreen
 
 var jump_velocity: float = 5.4
 var wants_jump_this_frame: bool = false
@@ -124,6 +128,7 @@ func _ready() -> void:
 	_build_camera()
 	_build_systems()
 	_build_hud()
+	_connect_run_accounting_events()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func _build_collision() -> void:
@@ -535,6 +540,36 @@ func _connect_objective_events() -> void:
 	if not GameEvents.extraction_available.is_connected(extraction_callable):
 		GameEvents.extraction_available.connect(extraction_callable)
 
+func _connect_run_accounting_events() -> void:
+	var enemy_callable: Callable = Callable(self, "_on_enemy_killed_for_debrief")
+	if not GameEvents.enemy_killed.is_connected(enemy_callable):
+		GameEvents.enemy_killed.connect(enemy_callable)
+	var objective_callable: Callable = Callable(self, "_on_objective_completed_for_debrief")
+	if not GameEvents.objective_completed.is_connected(objective_callable):
+		GameEvents.objective_completed.connect(objective_callable)
+	var run_callable: Callable = Callable(self, "_on_run_ended_for_debrief")
+	if not GameEvents.run_ended.is_connected(run_callable):
+		GameEvents.run_ended.connect(run_callable)
+
+func _on_enemy_killed_for_debrief(_enemy: Node, _cause: String) -> void:
+	if not run_finished:
+		run_kills += 1
+
+func _on_objective_completed_for_debrief(_objective_id: String, _objective_type: String, _sector_id: String, _position: Vector3) -> void:
+	if not run_finished:
+		run_objectives_done += 1
+
+func _on_run_ended_for_debrief(success: bool, reason: String) -> void:
+	_show_mission_debrief(success, reason)
+
+func _play_reload_dip() -> void:
+	if not weapon_pivot or not weapon or not weapon.is_reloading:
+		return
+	var start_y: float = weapon_pivot.position.y
+	var tween: Tween = weapon_pivot.create_tween()
+	tween.tween_property(weapon_pivot, "position:y", start_y - 0.08, 0.12).set_ease(Tween.EASE_IN)
+	tween.tween_property(weapon_pivot, "position:y", start_y, 0.22).set_ease(Tween.EASE_OUT)
+
 func _on_objectives_assigned(objectives: Array) -> void:
 	if objective_tracker:
 		objective_tracker.set_objectives(objectives)
@@ -610,8 +645,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif not run_finished and intro_lock_timer <= 0.0 and _wants_weapon_slot(event):
 			_equip_weapon_slot(_weapon_slot_from_event(event))
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_reload(event):
-			weapon.start_reload()
-			AudioRouter.play_ui("reload_click")
+			if weapon.start_reload():
+				AudioRouter.play_ui("reload_click")
+				_play_reload_dip()
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_quick_bandage(event):
 			_try_quick_bleed_control()
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_trauma_kit(event):
@@ -1775,6 +1811,7 @@ func _on_weapon_condition_changed(condition: float) -> void:
 			(child as MeshInstance3D).material_override = material
 
 func set_run_time(elapsed_seconds: float, exit_located: bool) -> void:
+	run_time_elapsed = elapsed_seconds
 	if not timer_label:
 		return
 	var minutes = int(elapsed_seconds / 60.0)
@@ -1790,6 +1827,35 @@ func show_end_state(success: bool, reason: String) -> void:
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	end_label.text = ("%s\n%s\nPress R to restart" % ["FLOOR CLEARED" if success else "DEAD", reason])
 	end_label.add_theme_color_override("font_color", Color(0.55, 1.0, 0.65) if success else Color(1.0, 0.25, 0.25))
+
+func _show_mission_debrief(success: bool, _reason: String) -> void:
+	if debrief_screen and is_instance_valid(debrief_screen):
+		return
+	run_finished = true
+	allow_restart = true
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	var objectives_total: int = 3
+	var objectives_done: int = run_objectives_done
+	if objective_tracker:
+		objectives_total = max(1, objective_tracker.get_objective_count())
+		objectives_done = max(objectives_done, objective_tracker.get_done_count())
+	var final_corruption: float = mental.corruption if mental else 0.0
+	var summary: Dictionary = {
+		"success": success,
+		"time_elapsed": run_time_elapsed,
+		"kills": run_kills,
+		"objectives_done": objectives_done,
+		"objectives_total": objectives_total,
+		"contamination_cleared": clamp(100.0 - final_corruption, 0.0, 100.0),
+		"role": selected_role
+	}
+	debrief_screen = MissionDebriefScreen.new()
+	debrief_screen.name = "MissionDebriefScreen"
+	debrief_screen.configure(summary)
+	if hud_layer:
+		hud_layer.add_child(debrief_screen)
+	else:
+		add_child(debrief_screen)
 
 func show_death_handoff(reason: String) -> void:
 	run_finished = true

@@ -14,6 +14,8 @@ var arena_root: Node3D
 var navigation_region: NavigationRegion3D
 var nav_blockers: Array[Dictionary] = []
 var sector_lights: Dictionary = {}
+var emergency_lights_by_sector: Dictionary = {}
+var world_environment: WorldEnvironment
 var spawn_points: Array[Node3D] = []
 var entry_definitions: Array[Dictionary] = []
 var entry_doors: Dictionary = {}
@@ -83,7 +85,7 @@ func _build_audio_router() -> void:
 	audio_router = get_node_or_null("/root/AudioRouter")
 
 func _build_lighting() -> void:
-	var world_environment = WorldEnvironment.new()
+	world_environment = WorldEnvironment.new()
 	var environment = Environment.new()
 	environment.background_mode = Environment.BG_COLOR
 	environment.background_color = Color(0.015, 0.018, 0.024)
@@ -255,6 +257,12 @@ func _dict_color(source: Dictionary, key: String, fallback: Color) -> Color:
 
 func _create_warning_lights() -> void:
 	sector_lights["arena"] = []
+	for sector in _get_mission_sector_definitions():
+		var sector_id: String = String(sector.get("sector_id", "arena"))
+		if not sector_lights.has(sector_id):
+			sector_lights[sector_id] = []
+		if not emergency_lights_by_sector.has(sector_id):
+			emergency_lights_by_sector[sector_id] = []
 	var fixture_points: Array[Vector3] = [
 		Vector3(0, 3.72, -28),
 		Vector3(0, 3.72, -18),
@@ -272,9 +280,10 @@ func _create_warning_lights() -> void:
 		Vector3(24, 3.72, 24),
 		Vector3(24, 3.72, -24),
 		Vector3(-24, 3.72, 24)
-	]
+		]
 	for index in range(fixture_points.size()):
 		var point: Vector3 = fixture_points[index]
+		var sector_id: String = _sector_id_for_world_position(point)
 		_create_ceiling_fixture("CeilingFixture%d" % index, point)
 		var light = OmniLight3D.new()
 		light.light_color = Color(0.1, 0.9, 0.82)
@@ -284,11 +293,15 @@ func _create_warning_lights() -> void:
 		light.position = point
 		arena_root.add_child(light)
 		var lights: Array = []
-		var raw_lights: Variant = sector_lights.get("arena", [])
+		var raw_lights: Variant = sector_lights.get(sector_id, [])
 		if raw_lights is Array:
 			lights = raw_lights
 		lights.append(light)
-		sector_lights["arena"] = lights
+		sector_lights[sector_id] = lights
+	for sector in _get_mission_sector_definitions():
+		var sector_id: String = String(sector.get("sector_id", "arena"))
+		var sector_position: Vector3 = _dict_vector3(sector, "position", Vector3.ZERO)
+		_create_emergency_strip_light(sector_id, sector_position + Vector3(0.0, 3.35, 0.0))
 	if sector_power:
 		sector_power.register_sector("arena", "Prototype Combat Arena", true)
 		_apply_sector_light_state("arena", true, "initial_power")
@@ -296,6 +309,36 @@ func _create_warning_lights() -> void:
 func _create_ceiling_fixture(fixture_name: String, world_position: Vector3) -> void:
 	_create_box(fixture_name + "_Housing", world_position + Vector3(0.0, 0.16, 0.0), Vector3(1.55, 0.08, 0.34), Color(0.045, 0.055, 0.06), false)
 	_create_box(fixture_name + "_GlowStrip", world_position + Vector3(0.0, 0.1, 0.0), Vector3(1.18, 0.035, 0.12), Color(0.28, 0.95, 0.86), false)
+
+func _create_emergency_strip_light(sector_id: String, world_position: Vector3) -> void:
+	_create_box("EmergencyStrip_%s_Housing" % sector_id, world_position + Vector3(0.0, 0.08, 0.0), Vector3(1.05, 0.06, 0.16), Color(0.08, 0.035, 0.035), false)
+	var light: OmniLight3D = OmniLight3D.new()
+	light.name = "EmergencyLight_%s" % sector_id
+	light.light_color = Color(0.9, 0.06, 0.04)
+	light.light_energy = 0.0
+	light.omni_range = 4.0
+	light.shadow_enabled = false
+	light.position = world_position
+	light.add_to_group("emergency_lights_%s" % sector_id)
+	arena_root.add_child(light)
+	var lights: Array = []
+	var raw_lights: Variant = emergency_lights_by_sector.get(sector_id, [])
+	if raw_lights is Array:
+		lights = raw_lights
+	lights.append(light)
+	emergency_lights_by_sector[sector_id] = lights
+
+func _sector_id_for_world_position(world_position: Vector3) -> String:
+	var best_sector: String = "arena"
+	var best_distance: float = 999999.0
+	for sector in _get_mission_sector_definitions():
+		var sector_id: String = String(sector.get("sector_id", "arena"))
+		var sector_position: Vector3 = _dict_vector3(sector, "position", Vector3.ZERO)
+		var distance: float = Vector2(world_position.x - sector_position.x, world_position.z - sector_position.z).length()
+		if distance < best_distance:
+			best_distance = distance
+			best_sector = sector_id
+	return best_sector
 
 func _spawn_player() -> void:
 	_spawn_survivor("initial")
@@ -1315,8 +1358,6 @@ func _open_door_from_service(door_id: String, method_id: String) -> void:
 			sector_power.restore_sector("arena", "brownout_recovered")
 
 func _apply_sector_light_state(sector_id: String, powered: bool, _method_id: String) -> void:
-	if not sector_lights.has(sector_id):
-		return
 	var lights: Array = []
 	var raw_lights: Variant = sector_lights.get(sector_id, [])
 	if raw_lights is Array:
@@ -1324,11 +1365,31 @@ func _apply_sector_light_state(sector_id: String, powered: bool, _method_id: Str
 	for light in lights:
 		if not is_instance_valid(light):
 			continue
-		var omni = light as OmniLight3D
+		var omni: OmniLight3D = light as OmniLight3D
 		if not omni:
 			continue
-		omni.light_energy = 2.4 if powered else 0.12
+		omni.light_energy = 2.4 if powered else 0.0
 		omni.light_color = Color(0.62, 0.88, 0.92) if powered else Color(0.04, 0.08, 0.1)
+	var emergency_lights: Array = []
+	var raw_emergency_lights: Variant = emergency_lights_by_sector.get(sector_id, [])
+	if raw_emergency_lights is Array:
+		emergency_lights = raw_emergency_lights
+	for emergency_light in emergency_lights:
+		if emergency_light is OmniLight3D and is_instance_valid(emergency_light):
+			(emergency_light as OmniLight3D).light_energy = 0.0 if powered else 0.8
+	_update_ambient_power_state()
+
+func _update_ambient_power_state() -> void:
+	if not world_environment or not world_environment.environment or not sector_power:
+		return
+	var any_dark: bool = false
+	for sector_value in sector_power.sectors.values():
+		if sector_value is Dictionary:
+			var sector: Dictionary = sector_value
+			if not bool(sector.get("powered", true)):
+				any_dark = true
+				break
+	world_environment.environment.ambient_light_energy = 0.04 if any_dark else 0.22
 
 func _leave_solver_trace(trace_name: String, world_position: Vector3, color: Color) -> void:
 	if not arena_root:

@@ -44,9 +44,10 @@ func _start_open_animation() -> void:
 	if not mesh_instance:
 		_finish_open_state()
 		return
-	AudioRouter.play_3d("interact", global_position)
+	AudioRouter.play_3d("reload_click", global_position, 1.2)
+	_spawn_unlock_flash()
 	var tween: Tween = create_tween()
-	tween.tween_property(mesh_instance, "scale:y", 0.0, 0.55).set_ease(Tween.EASE_IN)
+	tween.tween_property(mesh_instance, "scale:y", 0.0, 0.48).set_ease(Tween.EASE_IN)
 	tween.tween_callback(Callable(self, "_finish_open_state"))
 
 func _finish_open_state() -> void:
@@ -105,6 +106,7 @@ func _build_body(size: Vector3, color: Color) -> void:
 	collision_shape.shape = shape
 	add_child(collision_shape)
 	mesh_instance = MeshInstance3D.new()
+	mesh_instance.name = "DoorMesh"
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	mesh_instance.mesh = mesh
@@ -131,6 +133,19 @@ func _update_door_visual() -> void:
 		color = Color(0.24, 0.05, 0.04)
 		emission = 0.65
 	mesh_instance.material_override = _make_material(color, emission)
+
+func _spawn_unlock_flash() -> void:
+	var flash: OmniLight3D = OmniLight3D.new()
+	flash.name = "DoorUnlockFlash"
+	flash.light_color = Color(0.18, 1.0, 0.82)
+	flash.light_energy = 2.4
+	flash.omni_range = 3.0
+	flash.shadow_enabled = false
+	flash.position = Vector3(0.0, 0.35, 0.0)
+	add_child(flash)
+	var tween: Tween = flash.create_tween()
+	tween.tween_property(flash, "light_energy", 0.0, 0.6)
+	tween.tween_callback(Callable(flash, "queue_free"))
 
 func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
 	return EffectMaterialCache.get_material(color, emission_energy)

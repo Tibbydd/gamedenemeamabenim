@@ -16,6 +16,10 @@ var max_active_enemies: int = 28
 var station_floor: int = 0
 var player_corruption: float = 0.0
 var vent_spawn_timer: float = 18.0
+var vent_warning_light: OmniLight3D
+var vent_warning_origin: Vector3 = Vector3.ZERO
+var vent_warning_active: bool = false
+var vent_warning_flicker_elapsed: float = 0.0
 
 func setup(new_player: PlayerControllerFPS, new_enemy_container: Node3D, new_spawn_points: Array[Node3D]) -> void:
 	player = new_player
@@ -111,18 +115,60 @@ func _update_breach_waves(delta: float) -> void:
 
 func _update_vent_spawns(delta: float) -> void:
 	vent_spawn_timer -= delta
+	if vent_spawn_timer <= 15.0 and vent_spawn_timer > 0.0 and not vent_warning_active:
+		_start_vent_warning(_pick_swarmer_vent_origin())
+	if vent_warning_active:
+		_update_vent_warning_light(delta)
 	if vent_spawn_timer > 0.0:
 		return
 	vent_spawn_timer = 30.0 if threat_level > 0.6 else 45.0
 	if active_enemies.size() >= max_active_enemies - 2:
+		_clear_vent_warning()
 		return
-	var origin: Vector3 = _pick_swarmer_vent_origin()
+	var origin: Vector3 = vent_warning_origin if vent_warning_active else _pick_swarmer_vent_origin()
+	_clear_vent_warning()
 	var cluster_count: int = randi_range(4, 5)
 	cluster_count = min(cluster_count, max_active_enemies - active_enemies.size())
 	for index in range(cluster_count):
 		var offset: Vector3 = Vector3(randf_range(-1.0, 1.0), 0.5, randf_range(-1.0, 1.0))
 		spawn_enemy_at(origin + offset, "swarmer")
 	GameEvents.request_sound("enemy_alert", origin, 0.85)
+
+func _start_vent_warning(origin: Vector3) -> void:
+	vent_warning_origin = origin
+	vent_warning_active = true
+	vent_warning_flicker_elapsed = 0.0
+	vent_warning_light = OmniLight3D.new()
+	vent_warning_light.name = "VentBreachWarning"
+	vent_warning_light.light_color = Color(0.9, 0.1, 0.04)
+	vent_warning_light.light_energy = 1.8
+	vent_warning_light.omni_range = 2.5
+	vent_warning_light.shadow_enabled = false
+	if enemy_container:
+		enemy_container.add_child(vent_warning_light)
+	else:
+		add_child(vent_warning_light)
+	vent_warning_light.global_position = origin + Vector3.UP * 0.15
+	GameEvents.request_sound("hazard_blast", origin, 0.35)
+	if player and player.comms:
+		player.comms.announce("Vent breach detected.")
+
+func _update_vent_warning_light(delta: float) -> void:
+	if not vent_warning_light or not is_instance_valid(vent_warning_light):
+		return
+	vent_warning_flicker_elapsed += delta
+	if vent_warning_flicker_elapsed > 12.0:
+		vent_warning_light.light_energy = 0.25
+		return
+	var phase: int = int(floor(vent_warning_flicker_elapsed / 0.5)) % 2
+	vent_warning_light.light_energy = 1.8 if phase == 0 else 0.25
+
+func _clear_vent_warning() -> void:
+	if vent_warning_light and is_instance_valid(vent_warning_light):
+		vent_warning_light.queue_free()
+	vent_warning_light = null
+	vent_warning_active = false
+	vent_warning_flicker_elapsed = 0.0
 
 func _spawn_enemy() -> void:
 	if spawn_points.is_empty() or not enemy_container:
