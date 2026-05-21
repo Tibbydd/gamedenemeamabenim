@@ -550,21 +550,22 @@ func _build_station_vertical_connections() -> void:
 	var grate_col := Color(0.16, 0.18, 0.18)
 	var wall_col := Color(0.08, 0.10, 0.11)
 
-	for stair_side in [-1, 1]:
-		var sx := 38.0 * stair_side
-		var prefix := "WStair" if stair_side < 0 else "EStair"
+	for stair_side_raw in [-1, 1]:
+		var stair_side: int = int(stair_side_raw)
+		var sx: float = 38.0 * stair_side
+		var prefix: String = "WStair" if stair_side < 0 else "EStair"
 		# Shaft outer walls (east/west faces, full height)
 		_create_structural_wall("%sWallOuter" % prefix, Vector3(sx + stair_side * 2.1, floor_h * 1.5, 4.0), Vector3(0.28, floor_h * 3.0 + 2.0, 22.0))
 		for flight in range(3):  # F0→F1, F1→F2, F2→F3
-			var y_base := flight * floor_h
+			var y_base: float = flight * floor_h
 			# Zigzag: even flights go south (z increases), odd flights go north
-			var go_south := (flight % 2 == 0)
-			var z_from := 2.0 if go_south else 10.0
-			var z_to   := 10.0 if go_south else 2.0
-			var cx     := sx
-			var cy     := y_base + floor_h * 0.5
-			var cz     := (z_from + z_to) * 0.5   # = 6.0
-			var angle  := -ramp_angle if go_south else ramp_angle
+			var go_south: bool = (flight % 2 == 0)
+			var z_from: float = 2.0 if go_south else 10.0
+			var z_to: float   = 10.0 if go_south else 2.0
+			var cx: float     = sx
+			var cy: float     = y_base + floor_h * 0.5
+			var cz: float     = (z_from + z_to) * 0.5   # = 6.0
+			var angle: float  = -ramp_angle if go_south else ramp_angle
 			var ramp: Node3D = _create_box(
 				"%sRamp%d" % [prefix, flight],
 				Vector3(cx, cy, cz),
@@ -574,8 +575,8 @@ func _build_station_vertical_connections() -> void:
 			if ramp:
 				ramp.rotation.x = angle
 			# North/south shaft walls flanking this flight
-			var z_min := min(z_from, z_to) - 0.15
-			var z_max := max(z_from, z_to) + 0.15
+			var z_min: float = minf(z_from, z_to) - 0.15
+			var z_max: float = maxf(z_from, z_to) + 0.15
 			_create_structural_wall("%sShaftN%d" % [prefix, flight],
 				Vector3(cx, cy, z_min), Vector3(4.2, floor_h + 1.0, 0.28))
 			_create_structural_wall("%sShaftS%d" % [prefix, flight],
@@ -584,19 +585,19 @@ func _build_station_vertical_connections() -> void:
 	# Maintenance ladder shaft — near-vertical steep ramp at x=0, z=-31
 	# Connects F0 airlock level to upper floors via narrow passage
 	var ladder_col := Color(0.14, 0.18, 0.16)
-	for flight in range(3):
-		var y_base := flight * floor_h
-		var lean_z := 0.6  # slight lean so player can traverse
+	for ladder_flight in range(3):
+		var y_base: float = ladder_flight * floor_h
+		var lean_z: float = 0.6
 		var ladder: Node3D = _create_box(
-			"MaintLadder%d" % flight,
+			"MaintLadder%d" % ladder_flight,
 			Vector3(0.0, y_base + floor_h * 0.5, -31.0),
 			Vector3(1.4, 0.14, sqrt(lean_z * lean_z + floor_h * floor_h)),
 			ladder_col, true, "grate"
 		)
 		if ladder:
 			ladder.rotation.x = -atan2(floor_h, lean_z)
-		_create_structural_wall("LadderShaftW%d" % flight, Vector3(-0.9, y_base + floor_h * 0.5, -31.0), Vector3(0.18, floor_h + 0.4, 2.0))
-		_create_structural_wall("LadderShaftE%d" % flight, Vector3( 0.9, y_base + floor_h * 0.5, -31.0), Vector3(0.18, floor_h + 0.4, 2.0))
+		_create_structural_wall("LadderShaftW%d" % ladder_flight, Vector3(-0.9, y_base + floor_h * 0.5, -31.0), Vector3(0.18, floor_h + 0.4, 2.0))
+		_create_structural_wall("LadderShaftE%d" % ladder_flight, Vector3( 0.9, y_base + floor_h * 0.5, -31.0), Vector3(0.18, floor_h + 0.4, 2.0))
 
 	# Elevator shaft — decorative (teleport interaction added separately)
 	_create_structural_wall("ElevShaftN", Vector3(0.0, floor_h * 1.5,  2.2), Vector3(3.0, floor_h * 3.0 + 2.0, 0.18))
