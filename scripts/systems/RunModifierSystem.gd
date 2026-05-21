@@ -103,9 +103,9 @@ func _process(delta: float) -> void:
 	# Probability scaling: ramp up if we're behind target
 	var checks_done: float = run_elapsed / check_interval
 	var checks_total: float = run_duration_target / check_interval
-	var checks_left: float = max(1.0, checks_total - checks_done)
+	var checks_left: float = maxf(1.0, checks_total - checks_done)
 	var events_needed: float = float(events_target_min + events_target_max) * 0.5 - float(events_triggered)
-	var trigger_prob: float = clamp(events_needed / checks_left, 0.04, 0.55)
+	var trigger_prob: float = clampf(events_needed / checks_left, 0.04, 0.55)
 
 	if randf() < trigger_prob:
 		_roll_and_trigger()
