@@ -17,6 +17,13 @@ func _ready() -> void:
 	sounds["howler_death"] = _make_stream(_synth_howler_death())
 	sounds["reload_click"] = _make_stream(_synth_click(0.055, 1800.0))
 	sounds["interact"] = _make_stream(_synth_click(0.04, 2200.0))
+	sounds["ambient_hum"] = _make_stream(_synth_ambient_hum())
+	sounds["ambient_drip"] = _make_stream(_synth_ambient_drip())
+	sounds["ambient_clank"] = _make_stream(_synth_ambient_clank())
+	sounds["ambient_electric"] = _make_stream(_synth_ambient_electric())
+	sounds["objective_complete"] = _make_stream(_synth_objective_complete())
+	sounds["extraction_beacon"] = _make_stream(_synth_extraction_beacon())
+	sounds["door_open"] = _make_stream(_synth_door_open())
 
 func get_stream(sound_id: String) -> AudioStream:
 	return sounds.get(sound_id, null)
@@ -123,4 +130,103 @@ func _synth_click(duration: float, freq: float) -> PackedFloat32Array:
 		var t := float(i) / float(SAMPLE_RATE)
 		var env := exp(-t / (duration * 0.3))
 		samples[i] = sin(TAU * freq * t) * env * 0.65
+	return samples
+
+func _synth_ambient_hum() -> PackedFloat32Array:
+	var duration: float = 3.2
+	var n: int = int(duration * SAMPLE_RATE)
+	var samples := PackedFloat32Array()
+	samples.resize(n)
+	for i in range(n):
+		var t: float = float(i) / float(SAMPLE_RATE)
+		var edge_fade: float = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(duration - 0.08, duration, t))
+		samples[i] = (
+			sin(TAU * 48.0 * t) * 0.18
+			+ sin(TAU * 52.0 * t) * 0.12
+			+ randf_range(-0.04, 0.04) * exp(-t * 0.5)
+		) * edge_fade
+	return samples
+
+func _synth_ambient_drip() -> PackedFloat32Array:
+	var duration: float = 0.28
+	var n: int = int(duration * SAMPLE_RATE)
+	var samples := PackedFloat32Array()
+	samples.resize(n)
+	for i in range(n):
+		var t: float = float(i) / float(SAMPLE_RATE)
+		samples[i] = (
+			sin(TAU * 620.0 * t) * exp(-t * 18.0) * 0.45
+			+ sin(TAU * 310.0 * t) * exp(-t * 8.0) * 0.22
+		)
+	return samples
+
+func _synth_ambient_clank() -> PackedFloat32Array:
+	var duration: float = 0.55
+	var n: int = int(duration * SAMPLE_RATE)
+	var samples := PackedFloat32Array()
+	samples.resize(n)
+	for i in range(n):
+		var t: float = float(i) / float(SAMPLE_RATE)
+		samples[i] = (
+			sin(TAU * 88.0 * t) * exp(-t * 6.0) * 0.55
+			+ randf_range(-1.0, 1.0) * exp(-t * 22.0) * 0.35
+		)
+	return samples
+
+func _synth_ambient_electric() -> PackedFloat32Array:
+	var duration: float = 0.38
+	var n: int = int(duration * SAMPLE_RATE)
+	var samples := PackedFloat32Array()
+	samples.resize(n)
+	for i in range(n):
+		var t: float = float(i) / float(SAMPLE_RATE)
+		samples[i] = (
+			randf_range(-1.0, 1.0) * exp(-t * 4.0) * 0.42
+			+ sin(TAU * 280.0 * t) * exp(-t * 12.0) * 0.28
+		)
+	return samples
+
+func _synth_objective_complete() -> PackedFloat32Array:
+	var duration: float = 0.54
+	var n: int = int(duration * SAMPLE_RATE)
+	var samples := PackedFloat32Array()
+	samples.resize(n)
+	var tones: Array[float] = [420.0, 560.0, 740.0]
+	var burst_duration: float = 0.12
+	var gap_duration: float = 0.06
+	for tone_index in range(tones.size()):
+		var start_time: float = float(tone_index) * (burst_duration + gap_duration)
+		var start_sample: int = int(start_time * SAMPLE_RATE)
+		var burst_samples: int = int(burst_duration * SAMPLE_RATE)
+		for sample_offset in range(burst_samples):
+			var sample_index: int = start_sample + sample_offset
+			if sample_index >= n:
+				break
+			var t: float = float(sample_offset) / float(SAMPLE_RATE)
+			samples[sample_index] = sin(TAU * tones[tone_index] * t) * exp(-t * 28.0) * 0.62
+	return samples
+
+func _synth_extraction_beacon() -> PackedFloat32Array:
+	var duration: float = 0.72
+	var n: int = int(duration * SAMPLE_RATE)
+	var samples := PackedFloat32Array()
+	samples.resize(n)
+	for i in range(n):
+		var t: float = float(i) / float(SAMPLE_RATE)
+		var sweep: float = lerp(180.0, 440.0, t / duration)
+		var env: float = smoothstep(0.0, 0.04, t) * (1.0 - smoothstep(0.68, 0.72, t))
+		samples[i] = (sin(TAU * sweep * t) * 0.55 + sin(TAU * 92.0 * t) * 0.22) * env
+	return samples
+
+func _synth_door_open() -> PackedFloat32Array:
+	var duration: float = 0.42
+	var n: int = int(duration * SAMPLE_RATE)
+	var samples := PackedFloat32Array()
+	samples.resize(n)
+	for i in range(n):
+		var t: float = float(i) / float(SAMPLE_RATE)
+		samples[i] = (
+			randf_range(-1.0, 1.0) * 0.58 * exp(-t * 5.0)
+			+ sin(TAU * 72.0 * t) * 0.38 * exp(-t * 8.0)
+		)
 	return samples

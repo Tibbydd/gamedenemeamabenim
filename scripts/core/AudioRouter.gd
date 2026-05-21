@@ -18,6 +18,8 @@ const ALIASES: Dictionary = {
 	"enemy_windup": "enemy_alert",
 	"enemy_attack": "enemy_alert",
 	"mag_drop": "reload_click",
+	"sector_bulkhead_release": "door_open",
+	"door_forced": "door_open",
 }
 
 const UI_SOUND_IDS: Array[String] = [
@@ -59,7 +61,7 @@ func _resolve_fallback_sound(sound_id: String) -> String:
 	if sound_id.begins_with("hazard_") or sound_id.begins_with("pressure_dump"):
 		return "enemy_death"
 	if sound_id == "door_forced" or sound_id == "sector_bulkhead_release" or sound_id.begins_with("door_forced"):
-		return "reload_click"
+		return "door_open"
 	if sound_id in ["button", "telemetry_ping", "heartbeat", "comms", "pickup", "equipment_pickup"] or sound_id.begins_with("equipment_pickup"):
 		return "interact"
 	return "interact"

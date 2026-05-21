@@ -44,7 +44,7 @@ func _start_open_animation() -> void:
 	if not mesh_instance:
 		_finish_open_state()
 		return
-	AudioRouter.play_3d("reload_click", global_position, 1.2)
+	AudioRouter.play_3d("door_open", global_position, 1.0)
 	_spawn_unlock_flash()
 	var tween: Tween = create_tween()
 	tween.tween_property(mesh_instance, "scale:y", 0.0, 0.48).set_ease(Tween.EASE_IN)

@@ -148,6 +148,7 @@ func _on_objective_node_completed(objective_id: String, objective_type: String, 
 	_update_objective_state(objective_id, "done", 1.0)
 	objective_completed.emit(objective_id, objective_type, sector_id, position)
 	GameEvents.report_objective_completed(objective_id, objective_type, sector_id, position)
+	AudioRouter.play_ui("objective_complete")
 	if _all_objectives_done():
 		all_objectives_completed.emit()
 		GameEvents.report_all_objectives_completed()
@@ -206,16 +207,17 @@ func _spawn_extraction_zone() -> void:
 	arena_root.add_child(extraction_zone)
 	extraction_zone.global_position = extraction_position
 	GameEvents.report_extraction_available(extraction_position)
+	AudioRouter.play_3d("extraction_beacon", extraction_position, 1.0)
 	GameEvents.request_sound("comms", extraction_position, 1.0)
 	if player and player.comms:
 		player.comms.announce("Objectives complete. Extraction beacon is live.")
 
 func _choose_extraction_position() -> Vector3:
 	var candidates: Array[Vector3] = [
-		Vector3(0.0, 0.05, 31.0),
-		Vector3(0.0, 0.05, -31.0),
-		Vector3(-31.0, 0.05, 0.0),
-		Vector3(31.0, 0.05, 0.0)
+		Vector3(0.0, 0.05, -26.0),
+		Vector3(0.0, 0.05, 26.0),
+		Vector3(22.0, 0.05, 0.0),
+		Vector3(-22.0, 0.05, 0.0)
 	]
 	if not player:
 		return candidates[0]

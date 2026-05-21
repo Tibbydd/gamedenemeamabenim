@@ -92,6 +92,7 @@ var run_kills: int = 0
 var run_objectives_done: int = 0
 var run_time_elapsed: float = 0.0
 var debrief_screen: MissionDebriefScreen
+var ambient_hum_player: AudioStreamPlayer
 
 var jump_velocity: float = 5.4
 var wants_jump_this_frame: bool = false
@@ -128,6 +129,7 @@ func _ready() -> void:
 	_build_camera()
 	_build_systems()
 	_build_hud()
+	_build_ambient_hum_player()
 	_connect_run_accounting_events()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
@@ -529,6 +531,24 @@ func _make_hud_label(text_value: String) -> Label:
 	label.add_theme_constant_override("shadow_offset_y", 2)
 	return label
 
+func _build_ambient_hum_player() -> void:
+	var stream: AudioStream = SoundSynthesizer.get_stream("ambient_hum")
+	if not (stream is AudioStreamWAV):
+		return
+	var hum_stream: AudioStreamWAV = stream as AudioStreamWAV
+	hum_stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	hum_stream.loop_begin = 0
+	hum_stream.loop_end = max(0, int(hum_stream.data.size() / 2) - 1)
+	ambient_hum_player = AudioStreamPlayer.new()
+	ambient_hum_player.name = "AmbientHumPlayer"
+	ambient_hum_player.stream = hum_stream
+	ambient_hum_player.volume_db = linear_to_db(0.18)
+	if hud_layer:
+		hud_layer.add_child(ambient_hum_player)
+	else:
+		add_child(ambient_hum_player)
+	ambient_hum_player.play()
+
 func _connect_objective_events() -> void:
 	var assigned_callable: Callable = Callable(self, "_on_objectives_assigned")
 	if not GameEvents.objectives_assigned.is_connected(assigned_callable):
@@ -654,6 +674,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_try_trauma_or_splint()
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_injector(event):
 			health.use_injector()
+		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_role_ability(event):
+			_use_role_ability()
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_shove(event):
 			_try_shove()
 		elif run_finished and allow_restart and InputBus.wants_restart(event):
@@ -711,6 +733,7 @@ func _physics_process(delta: float) -> void:
 	_update_weapon_obstruction(delta)
 	_update_carried_object()
 	shove_cooldown = max(0.0, shove_cooldown - delta)
+	_update_role_ability_timers(delta)
 	_emit_movement_noise(delta, move_input, speed)
 
 func _process(delta: float) -> void:
@@ -1008,6 +1031,47 @@ func _try_shove() -> void:
 			shoved = true
 	if shoved:
 		weapon_pivot.position += Vector3(0.0, 0.06, 0.08)
+
+func _use_role_ability() -> void:
+	var cooldown_key: String = "role_ability_cooldown"
+	if float(resources.get(cooldown_key, 0.0)) > 0.0:
+		return
+	match selected_role:
+		"breacher":
+			var forward: Vector3 = -global_transform.basis.z
+			velocity += forward * 7.0 + Vector3.UP * 0.4
+			resources[cooldown_key] = 12.0
+			AudioRouter.play_ui("interact")
+			_show_diegetic_notice("BREACH KICK\nMomentum committed.", 1.0)
+		"medic":
+			health.use_injector()
+			health.pain = max(0.0, health.pain - 35.0)
+			resources[cooldown_key] = 28.0
+			AudioRouter.play_ui("reload_click")
+			_show_diegetic_notice("EMERGENCY STIM\nPain response dampened.", 1.0)
+		"heavy":
+			resources["suppression_active"] = 8.0
+			resources[cooldown_key] = 22.0
+			AudioRouter.play_ui("enemy_alert")
+			_show_diegetic_notice("SUPPRESSION STANCE\nWeapon braced.", 1.0)
+		_:
+			resources[cooldown_key] = 12.0
+			AudioRouter.play_ui("interact")
+
+func _update_role_ability_timers(delta: float) -> void:
+	if float(resources.get("role_ability_cooldown", 0.0)) > 0.0:
+		resources["role_ability_cooldown"] = max(0.0, float(resources["role_ability_cooldown"]) - delta)
+	if float(resources.get("suppression_active", 0.0)) > 0.0:
+		resources["suppression_active"] = max(0.0, float(resources["suppression_active"]) - delta)
+
+func _get_role_ability_cooldown_duration() -> float:
+	match selected_role:
+		"medic":
+			return 28.0
+		"heavy":
+			return 22.0
+		_:
+			return 12.0
 
 func _get_melee_multiplier() -> float:
 	if int(resources.get("melee_amp", 0)) > 0:
@@ -1441,6 +1505,8 @@ func _weapon_state_label(state: Dictionary) -> String:
 func _get_carried_units() -> int:
 	var total: int = 0
 	for key in resources.keys():
+		if _is_internal_resource_key(String(key)):
+			continue
 		total += max(1, int(resources[key]))
 	return total
 
@@ -1856,6 +1922,9 @@ func _show_mission_debrief(success: bool, _reason: String) -> void:
 		hud_layer.add_child(debrief_screen)
 	else:
 		add_child(debrief_screen)
+	run_kills = 0
+	run_objectives_done = 0
+	run_time_elapsed = 0.0
 
 func show_death_handoff(reason: String) -> void:
 	run_finished = true
@@ -2016,13 +2085,18 @@ func _build_inventory_text() -> String:
 		lines.append("SUPPLIES  empty")
 	else:
 		for key in resources:
-			lines.append("  %s  x%d" % [key.to_upper(), int(resources[key])])
+			if _is_internal_resource_key(String(key)):
+				continue
+			lines.append("  %s  x%d" % [String(key).to_upper(), int(resources[key])])
 	if wearable_modules.is_empty():
 		lines.append("MODULES  none")
 	else:
 		for key in wearable_modules:
 			lines.append("  %s" % key.to_upper())
 	return "\n".join(lines)
+
+func _is_internal_resource_key(resource_id: String) -> bool:
+	return resource_id in ["role_ability_cooldown", "suppression_active"]
 
 func _on_weapon_ammo_changed(_current: int, _reserve: int) -> void:
 	_refresh_weapon_hologram()
@@ -2056,5 +2130,9 @@ func _update_crosshair_spread() -> void:
 	var speed_spread := (vel_xz / max_speed) * 18.0
 	var air_spread := 22.0 if not is_on_floor() else 0.0
 	var stance_reduction := 10.0 if is_prone else (6.0 if is_crouching else 0.0)
+	if float(resources.get("suppression_active", 0.0)) > 0.0:
+		stance_reduction += 14.0
 	var target := base_spread + speed_spread + air_spread - stance_reduction
 	crosshair_ctrl.spread_px = lerp(crosshair_ctrl.spread_px, max(4.0, target), get_process_delta_time() * 8.0)
+	crosshair_ctrl.role_cooldown = float(resources.get("role_ability_cooldown", 0.0))
+	crosshair_ctrl.role_cooldown_max = _get_role_ability_cooldown_duration()

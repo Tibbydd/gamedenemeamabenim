@@ -4,6 +4,8 @@ class_name CrosshairControl
 var spread_px: float = 14.0
 var barrel_offset: Vector2 = Vector2.ZERO
 var fired_flash: float = 0.0  # countdown after shot, tints lines briefly
+var role_cooldown: float = 0.0
+var role_cooldown_max: float = 1.0
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -55,6 +57,10 @@ func _draw() -> void:
 
 	# Center dot
 	draw_circle(center, 1.8, col)
+	if role_cooldown > 0.0 and role_cooldown_max > 0.0:
+		var ratio: float = clamp(role_cooldown / role_cooldown_max, 0.0, 1.0)
+		var arc_center: Vector2 = center + Vector2(0.0, 22.0)
+		draw_arc(arc_center, 6.0, -PI * 0.5, -PI * 0.5 + TAU * (1.0 - ratio), 20, Color(0.35, 1.0, 0.86, 0.9), 1.4)
 
 	# Barrel ring — only drawn when barrel has significant offset from center
 	if barrel_offset.length() > 5.0:
