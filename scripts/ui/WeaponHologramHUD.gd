@@ -35,11 +35,10 @@ func _draw() -> void:
 	if weapon_name.is_empty():
 		return
 
-	var teal := Color(0.42, 0.88, 0.72, 0.85)
-	var dim := Color(0.32, 0.62, 0.52, 0.55)
-	var bright := Color(0.88, 1.0, 0.94, 0.95)
-	var w := size.x
-	var lx := 10.0
+	var teal: Color = Color(0.42, 0.88, 0.72, 0.85)
+	var dim: Color  = Color(0.32, 0.62, 0.52, 0.55)
+	var w: float    = size.x
+	var lx: float   = 10.0
 
 	# Vertical accent line
 	draw_line(Vector2(lx, 4.0), Vector2(lx, 62.0), teal, 2.0)
@@ -49,21 +48,23 @@ func _draw() -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, dim)
 
 	# Magazine icon
-	var fill_ratio := float(ammo_current) / float(magazine_size) if not is_reloading else 1.0
+	var fill_ratio: float = 1.0
+	if not is_reloading and magazine_size > 0:
+		fill_ratio = clampf(float(ammo_current) / float(magazine_size), 0.0, 1.0)
 	_draw_magazine_icon(Vector2(lx + 8.0, 22.0), fill_ratio)
 
 	# Reserve as mag count — "×3"
-	var mag_count := int(ammo_reserve) / int(magazine_size) if magazine_size > 0 else 0
-	var res_str := ("RELOADING" if is_reloading else "×%d" % mag_count)
+	var mag_count: int = int(ammo_reserve) / int(magazine_size) if magazine_size > 0 else 0
+	var res_str: String = "RELOADING" if is_reloading else "x%d" % mag_count
 	draw_string(_font, Vector2(lx + 32.0, 52.0), res_str,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, dim)
 
 	# Condition bar
-	var bar_y := 64.0
-	var bar_w := 60.0
-	var bar_h := 3.0
+	var bar_y: float = 64.0
+	var bar_w: float = 60.0
+	var bar_h: float = 3.0
 	draw_rect(Rect2(lx + 8.0, bar_y, bar_w, bar_h), Color(0.1, 0.15, 0.12, 0.5))
-	var cond_color := Color(0.28, 0.88, 0.52).lerp(Color(0.88, 0.22, 0.12), 1.0 - weapon_condition)
+	var cond_color: Color = Color(0.28, 0.88, 0.52).lerp(Color(0.88, 0.22, 0.12), 1.0 - weapon_condition)
 	draw_rect(Rect2(lx + 8.0, bar_y, bar_w * weapon_condition, bar_h), cond_color)
 
 	# Family tag
@@ -74,13 +75,12 @@ func _draw() -> void:
 	draw_line(Vector2(lx + 6.0, 22.0), Vector2(lx + 6.0 + 30.0, 22.0), dim, 0.8)
 
 func _draw_magazine_icon(top_left: Vector2, fill_ratio: float) -> void:
-	# Magazine silhouette: 14 wide × 30 tall body + 4 tall feed lip on top
-	var bw := 14.0
-	var bh := 28.0
-	var lip_h := 4.0
-	var lip_w := 8.0
-	var bx := top_left.x
-	var by := top_left.y
+	var bw: float = 14.0
+	var bh: float = 28.0
+	var lip_h: float = 4.0
+	var lip_w: float = 8.0
+	var bx: float = top_left.x
+	var by: float = top_left.y
 
 	# Feed lip (narrow top)
 	draw_rect(Rect2(bx + (bw - lip_w) * 0.5, by, lip_w, lip_h), Color(0.18, 0.28, 0.24, 0.7))
@@ -90,8 +90,8 @@ func _draw_magazine_icon(top_left: Vector2, fill_ratio: float) -> void:
 	draw_rect(Rect2(bx, by + lip_h, bw, bh), Color(0.22, 0.42, 0.38, 0.6), false, 1.0)
 
 	# Fill — grows from bottom up
-	var fill_h := bh * clamp(fill_ratio, 0.0, 1.0)
-	var fill_y := by + lip_h + (bh - fill_h)
+	var fill_h: float = bh * clampf(fill_ratio, 0.0, 1.0)
+	var fill_y: float = by + lip_h + (bh - fill_h)
 	var fill_color: Color
 	if fill_ratio > 0.65:
 		fill_color = Color(0.22, 0.82, 0.58, 0.88)
@@ -106,6 +106,6 @@ func _draw_magazine_icon(top_left: Vector2, fill_ratio: float) -> void:
 
 	# Tick marks — 4 horizontal lines dividing the body into quarters
 	for i in range(1, 4):
-		var tick_y := by + lip_h + bh * (float(i) / 4.0)
+		var tick_y: float = by + lip_h + bh * (float(i) * 0.25)
 		draw_line(Vector2(bx + 2.0, tick_y), Vector2(bx + bw - 2.0, tick_y),
 			Color(0.0, 0.0, 0.0, 0.35), 0.8)
