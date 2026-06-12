@@ -835,7 +835,7 @@ func _physics_process(delta: float) -> void:
 	jump_buffer_timer = max(0.0, jump_buffer_timer - delta)
 	if not is_on_floor():
 		# Apex gravity halving — floaty peak that lets players clear obstacles
-		var at_apex := abs(velocity.y) < 1.8
+		var at_apex: bool = abs(velocity.y) < 1.8
 		velocity.y -= gravity * (0.48 if at_apex else 1.0) * delta
 	else:
 		if jump_buffer_timer > 0.0 and not is_crouching and not is_prone:
