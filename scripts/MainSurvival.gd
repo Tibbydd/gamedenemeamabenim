@@ -72,8 +72,8 @@ func _update_ambient_events(delta: float) -> void:
 
 func _play_ambient_event() -> void:
 	var player_pos: Vector3 = Vector3.ZERO
-	if player_controller:
-		player_pos = player_controller.global_position
+	if player:
+		player_pos = player.global_position
 	var floor_y: float = player_pos.y
 	# Roll the sound type weighted by context
 	var roll := randf()
