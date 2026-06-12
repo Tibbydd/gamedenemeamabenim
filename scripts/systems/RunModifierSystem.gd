@@ -25,6 +25,7 @@ var events_target_max: int = 7
 var active_events: Dictionary = {}         # event_id → countdown_remaining
 var event_cooldowns: Dictionary = {}       # event_id → cooldown_remaining
 var last_event_elapsed: float = 0.0
+var _stored_values: Dictionary = {}        # event_id → values to restore on resolve
 
 const EVENT_DEFS: Array = [
 	# id, label, min_elapsed, cooldown, duration, weight
@@ -191,7 +192,13 @@ func _execute_event(event_id: String) -> void:
 			_comms("Emergency lockdown initiated. Some blast doors are sealed.")
 
 		"life_support_warning":
-			_comms("Life support degraded in affected sectors. Move quickly.")
+			# Thin the atmosphere — movement sluggish, mental toll builds
+			if player:
+				_stored_values["life_support_warning"] = {"movement_penalty_mult": player.movement_penalty_mult}
+				player.movement_penalty_mult = clamp(player.movement_penalty_mult * 0.78, 0.3, 1.0)
+				player.mental.add_corruption(9.0, "life_support_warning")
+				player.camera_shake = max(player.camera_shake, 0.06)
+			_comms("Life support pressure dropping. O₂ levels critical — seal your zone.")
 
 		"generator_fault":
 			var sectors := _get_sector_ids()
@@ -203,7 +210,12 @@ func _execute_event(event_id: String) -> void:
 			_comms("Generator fault. Two sectors on emergency power.")
 
 		"coolant_leak":
-			_comms("Coolant leak in engineering. Reduced visibility in affected area.")
+			# Spray coolant cloud across engineering and adjacent maintenance sections
+			var eng_pos := _sector_position("f0_utilities")
+			GameEvents.request_visibility_haze(eng_pos, 24.0, 58.0, 0.62)
+			GameEvents.request_visibility_haze(eng_pos + Vector3(-8, 0, 0), 14.0, 50.0, 0.45)
+			GameEvents.request_visibility_haze(_sector_position("f0_power"), 18.0, 45.0, 0.50)
+			_comms("Coolant line ruptured. Engineering corridor obscured — watch your footing.")
 
 		"biological_contamination":
 			if player and player.health:
@@ -248,7 +260,14 @@ func _execute_event(event_id: String) -> void:
 			_comms("Secondary power failure. Station on minimum emergency lighting.")
 
 		"fire_suppression":
-			_comms("Fire suppression system activated. Reduced visibility in affected sectors.")
+			# CO₂ flood — visibility tanks in three sectors, movement slowed
+			for sid in ["f0_arrival", "f0_cargo", "f1_living"]:
+				GameEvents.request_visibility_haze(_sector_position(sid), 28.0, 30.0, 0.70)
+			if player:
+				_stored_values["fire_suppression"] = {"movement_penalty_mult": player.movement_penalty_mult}
+				player.movement_penalty_mult = clamp(player.movement_penalty_mult * 0.82, 0.3, 1.0)
+				player.mental.add_corruption(5.0, "fire_suppression")
+			_comms("Fire suppression CO₂ flood active. Visibility near zero — move by memory.")
 
 		"structural_warning":
 			_comms("Structural integrity alert. Avoid marked zones — risk of collapse.")
@@ -261,7 +280,11 @@ func _execute_event(event_id: String) -> void:
 			_comms("Medical bay in lockdown. Treatment access restricted until override.")
 
 		"data_corruption":
-			_comms("Sensor corruption. Objective markers may be inaccurate — rely on visuals.")
+			# Sensor scramble — mental toll + camera noise, UI flickers for duration
+			if player:
+				player.mental.add_corruption(7.0, "data_corruption")
+				player.camera_shake = max(player.camera_shake, 0.14)
+			_comms("Sensor array corrupted. HUD data unreliable — navigate by sight.")
 
 		"plasma_conduit_rupture":
 			_comms("Plasma conduit ruptured. Fire hazard in adjacent corridors.")
@@ -276,10 +299,23 @@ func _execute_event(event_id: String) -> void:
 			_comms("Enemy reinforcements inbound. Confirmed drop-ship contact.")
 
 		"weapon_malfunction":
-			_comms("Weapon malfunction warning. Check chamber — possible feed failure.")
+			# Physical jam — degrade weapon condition and shake camera as feedback
+			if player:
+				player.camera_shake = max(player.camera_shake, 0.18)
+				if player.weapon and player.weapon.has_method("degrade_from_drop"):
+					player.weapon.degrade_from_drop(0.12)
+			_comms("Feed failure detected. Weapon condition degraded — field-strip when clear.")
 
 		"gravity_shift":
-			_comms("Gravity stabilizer fault. Expect irregular footing for 20 seconds.")
+			# Stabilizer fault — sudden lurch + low-grav for event duration
+			if player:
+				_stored_values["gravity_shift"] = {"gravity": player.gravity}
+				player.gravity *= 0.42
+				# Sudden upward lurch to sell the gravity drop
+				player.velocity += Vector3(randf_range(-1.8, 1.8), 3.8, randf_range(-1.8, 1.8))
+				player.camera_shake = max(player.camera_shake, 0.28)
+				player.mental.add_corruption(4.0, "gravity_shift")
+			_comms("Gravity stabilizer offline. Magnetic boots insufficient — brace yourself.")
 
 		"cryogenic_release":
 			_spawn_breach_at_sector("f2_labs", 4, "cryo_release")
@@ -305,6 +341,21 @@ func _on_event_resolved(event_id: String) -> void:
 			_comms("Electrical surge resolved. Systems nominal.")
 		"data_corruption":
 			_comms("Sensor calibration restored.")
+		"life_support_warning":
+			if player and _stored_values.has("life_support_warning"):
+				player.movement_penalty_mult = _stored_values["life_support_warning"]["movement_penalty_mult"]
+				_stored_values.erase("life_support_warning")
+			_comms("Life support pressure restored. Breathe easy.")
+		"fire_suppression":
+			if player and _stored_values.has("fire_suppression"):
+				player.movement_penalty_mult = _stored_values["fire_suppression"]["movement_penalty_mult"]
+				_stored_values.erase("fire_suppression")
+			_comms("CO₂ suppression vented. Air quality nominal.")
+		"gravity_shift":
+			if player and _stored_values.has("gravity_shift"):
+				player.gravity = _stored_values["gravity_shift"]["gravity"]
+				_stored_values.erase("gravity_shift")
+			_comms("Gravity stabilizer back online. Standard footing restored.")
 
 func _get_sector_ids() -> Array[String]:
 	if not sector_power:

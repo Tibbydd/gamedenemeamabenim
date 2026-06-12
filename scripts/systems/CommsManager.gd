@@ -12,6 +12,9 @@ var clean_patch_time: float = 0.0
 var floor_signal_distance: int = 0
 var flicker_timer: float = 0.0
 var inconsistent_callsign: String = ""
+var _tw_target: String = ""
+var _tw_pos: int = 0
+var _tw_char_timer: float = 0.0
 
 func setup(mental_state: MentalStateManager, label: Label) -> void:
 	mental = mental_state
@@ -37,7 +40,10 @@ func announce(message: String) -> void:
 	if get_parent() is Node3D:
 		source_position = (get_parent() as Node3D).global_position
 	GameEvents.request_sound("comms", source_position, 0.7)
-	_refresh_display()
+	# Start typewriter reveal
+	_tw_target = "COMMS: %s" % last_message
+	_tw_pos = 0
+	_tw_char_timer = 0.0
 
 func _process(delta: float) -> void:
 	if not comms_label:
@@ -46,6 +52,16 @@ func _process(delta: float) -> void:
 	flicker_timer = max(0.0, flicker_timer - delta)
 	if not has_headset:
 		_refresh_display()
+		return
+	# Typewriter character reveal
+	if _tw_pos < _tw_target.length():
+		_tw_char_timer -= delta
+		if _tw_char_timer <= 0.0:
+			_tw_char_timer = 1.0 / 42.0
+			_tw_pos += 1
+			comms_label.text = _tw_target.substr(0, _tw_pos)
+			var corruption := mental.corruption if mental else 0.0
+			comms_label.modulate = Color(0.75, 1.0, 0.9).lerp(Color(1.0, 0.28, 0.2), clamp(corruption / 100.0, 0.0, 1.0))
 		return
 	message_timer -= delta
 	if message_timer <= 0.0:

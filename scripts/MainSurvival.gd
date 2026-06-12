@@ -29,6 +29,7 @@ var successor_spawn_in_progress: bool = false
 var selected_role: String = "breacher"
 var mission_deployed: bool = false
 var ambient_event_timer: float = 0.0
+var _alarm_loop_player: AudioStreamPlayer = null
 
 func _ready() -> void:
 	randomize()
@@ -66,11 +67,42 @@ func _update_ambient_events(delta: float) -> void:
 	ambient_event_timer -= delta
 	if ambient_event_timer > 0.0:
 		return
-	ambient_event_timer = randf_range(12.0, 22.0)
-	var ambient_ids: Array[String] = ["ambient_drip", "ambient_clank", "ambient_electric"]
-	var sound_id: String = ambient_ids[randi_range(0, ambient_ids.size() - 1)]
-	var event_position: Vector3 = Vector3(randf_range(-18.0, 18.0), 2.5, randf_range(-18.0, 18.0))
-	AudioRouter.play_3d(sound_id, event_position, 0.6)
+	ambient_event_timer = randf_range(7.0, 16.0)
+	_play_ambient_event()
+
+func _play_ambient_event() -> void:
+	var player_pos: Vector3 = Vector3.ZERO
+	if player_controller:
+		player_pos = player_controller.global_position
+	var floor_y: float = player_pos.y
+	# Roll the sound type weighted by context
+	var roll := randf()
+	var sound_id: String
+	if roll < 0.22:
+		sound_id = "ambient_pipe_groan"
+	elif roll < 0.40:
+		sound_id = "ambient_distant_impact"
+	elif roll < 0.56:
+		sound_id = "ambient_electric"
+	elif roll < 0.72:
+		sound_id = "ambient_clank"
+	elif roll < 0.87:
+		sound_id = "ambient_drip"
+	else:
+		sound_id = "ambient_hum"
+	# Place the sound near the player but offset to a random direction
+	var angle := randf() * TAU
+	var dist := randf_range(6.0, 22.0)
+	var height_offset := randf_range(-1.2, 3.5)
+	var event_position := Vector3(
+		player_pos.x + cos(angle) * dist,
+		floor_y + height_offset,
+		player_pos.z + sin(angle) * dist
+	)
+	# Pitch shifts slightly based on floor — higher floors sound more strained
+	var floor_index: int = int(round(floor_y / 4.2))
+	var base_pitch: float = 0.82 + float(floor_index) * 0.04
+	AudioRouter.play_3d(sound_id, event_position, randf_range(base_pitch * 0.94, base_pitch * 1.06))
 
 func _build_facility_state() -> void:
 	facility_state = FacilityProgression.new()
@@ -100,27 +132,52 @@ func _build_audio_router() -> void:
 
 func _build_lighting() -> void:
 	world_environment = WorldEnvironment.new()
-	var environment = Environment.new()
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color(0.015, 0.018, 0.024)
+	var environment := Environment.new()
+	# Mars-like procedural sky visible through windows and exterior gaps
+	var proc_sky := ProceduralSkyMaterial.new()
+	proc_sky.sky_top_color = Color(0.05, 0.025, 0.012)
+	proc_sky.sky_horizon_color = Color(0.60, 0.26, 0.10)
+	proc_sky.sky_curve = 0.20
+	proc_sky.sky_energy_multiplier = 0.90
+	proc_sky.ground_bottom_color = Color(0.20, 0.09, 0.04)
+	proc_sky.ground_horizon_color = Color(0.48, 0.20, 0.09)
+	proc_sky.ground_curve = 0.03
+	proc_sky.sun_angle_max = 48.0
+	proc_sky.sun_curve = 0.25
+	var sky := Sky.new()
+	sky.sky_material = proc_sky
+	environment.sky = sky
+	environment.background_mode = Environment.BG_SKY
+	environment.background_energy_multiplier = 0.82
+	# Warm dusty ambient from atmospheric scatter
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.06, 0.085, 0.095)
-	environment.ambient_light_energy = 0.22
+	environment.ambient_light_color = Color(0.11, 0.08, 0.06)
+	environment.ambient_light_energy = 0.18
+	# Atmospheric dust — keeps interior spooky, exterior shows distance haze
 	environment.fog_enabled = true
 	environment.fog_density = 0.038
-	environment.fog_light_color = Color(0.12, 0.38, 0.44)
-	environment.fog_aerial_perspective = 0.12
+	environment.fog_light_color = Color(0.50, 0.26, 0.12)
+	environment.fog_aerial_perspective = 0.22
 	world_environment.environment = environment
 	world_environment.add_to_group("world_env")
 	add_child(world_environment)
-	var moon = DirectionalLight3D.new()
-	moon.name = "ColdDirectionalLight"
-	moon.rotation_degrees = Vector3(-55, -25, 0)
-	moon.light_energy = 0.28
-	moon.light_color = Color(0.48, 0.62, 0.82)
-	moon.shadow_enabled = true
-	moon.directional_shadow_max_distance = 80.0
-	add_child(moon)
+	# Mars sun — low angle, warm light
+	var sun := DirectionalLight3D.new()
+	sun.name = "MarsSun"
+	sun.rotation_degrees = Vector3(-32, 68, 0)
+	sun.light_energy = 0.70
+	sun.light_color = Color(0.90, 0.76, 0.60)
+	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 80.0
+	add_child(sun)
+	# Weak fill from opposite side — simulates atmospheric bounce
+	var fill := DirectionalLight3D.new()
+	fill.name = "MarsAmbientFill"
+	fill.rotation_degrees = Vector3(-55, -112, 0)
+	fill.light_energy = 0.10
+	fill.light_color = Color(0.55, 0.38, 0.30)
+	fill.shadow_enabled = false
+	add_child(fill)
 
 func _build_arena() -> void:
 	arena_root = Node3D.new()
@@ -129,14 +186,12 @@ func _build_arena() -> void:
 	enemy_container = Node3D.new()
 	enemy_container.name = "Enemies"
 	add_child(enemy_container)
-	_create_box("Floor", Vector3(0, -0.1, -8), Vector3(96, 0.2, 96), Color(0.105, 0.115, 0.122), true, "deck")
-	_create_box("NorthOuterWall", Vector3(0, 1.4, -48), Vector3(96, 11.0, 0.7), Color(0.16, 0.18, 0.2), true, "bulkhead")
-	_create_box("SouthOuterWall", Vector3(0, 1.4, 32), Vector3(96, 11.0, 0.7), Color(0.16, 0.18, 0.2), true, "bulkhead")
-	_create_box("WestOuterWall", Vector3(-32, 1.4, -8), Vector3(0.7, 11.0, 80), Color(0.16, 0.18, 0.2), true, "bulkhead")
-	_create_box("EastOuterWall", Vector3(32, 1.4, -8), Vector3(0.7, 11.0, 80), Color(0.16, 0.18, 0.2), true, "bulkhead")
+	_build_exterior()
+	_build_outer_hull()
 	nav_blockers.clear()
 	_build_room_shell_geometry()
 	_build_room_props()
+	_build_wall_detail_pass()
 	var cover_specs: Array[Dictionary] = [
 		{"position": Vector3(-8, 0.75, -5), "size": Vector3(5, 1.5, 1.2)},
 		{"position": Vector3(8, 0.75, 4), "size": Vector3(5, 1.5, 1.2)},
@@ -151,30 +206,30 @@ func _build_arena() -> void:
 		_create_box("RuinCover", cover_position, cover_size, Color(0.22, 0.23, 0.24), true)
 		_register_nav_blocker(cover_position, cover_size)
 	for point in [
-		# F0 — arrival / cargo / utilities / power
-		Vector3(  0.0, 0.05, -20.0),
-		Vector3( -8.0, 0.05,  -9.0),
-		Vector3(  8.0, 0.05,  -9.0),
-		Vector3( 22.0, 0.05,  -3.0),
-		Vector3( 22.0, 0.05,   8.0),
-		Vector3(-22.0, 0.05,  -3.0),
-		Vector3(-13.0, 0.05,  16.0),
-		Vector3( 10.0, 0.05,  16.0),
+		# F0 — arrival / cargo / utilities / power (inside verified rooms)
+		Vector3(  0.0, 0.05, -21.5),  # SecurityCheck
+		Vector3(  0.0, 0.05, -10.0),  # ReceptionLobby
+		Vector3( 16.0, 0.05,  -3.0),  # CargoHub
+		Vector3( 25.0, 0.05,   6.0),  # ColdStorage
+		Vector3(-15.0, 0.05,  -3.0),  # WaterTreatment
+		Vector3(-29.0, 0.05,  -3.0),  # MaintWorkshop
+		Vector3(  0.0, 0.05,  14.0),  # PowerHub
+		Vector3(-11.0, 0.05,  21.0),  # GenRoom
 		# F1 — quarters / medical / living
-		Vector3(  0.0, 4.25, -13.0),
-		Vector3( 22.0, 4.25,  -6.0),
-		Vector3(-22.0, 4.25,  -3.0),
-		Vector3(  0.0, 4.25,  18.0),
+		Vector3(-18.0, 4.25, -16.0),  # BunkRoom
+		Vector3( -4.0, 4.25, -16.0),  # MedBay
+		Vector3( 10.0, 4.25,  -3.0),  # ESpine
+		Vector3( 25.0, 4.25,   4.0),  # FoodStorage
 		# F2 — labs / containment / research
-		Vector3(  0.0, 8.45, -14.0),
-		Vector3(-12.0, 8.45,   4.0),
-		Vector3( 12.0, 8.45,   4.0),
-		Vector3( 22.0, 8.45,  -6.0),
+		Vector3(-18.0, 8.45, -16.0),  # WetLab
+		Vector3( -4.0, 8.45,  -3.0),  # MidSpine
+		Vector3( 10.0, 8.45,  -9.0),  # ChemStorage
+		Vector3( 25.0, 8.45,  -9.0),  # DryLab
 		# F3 — command / comms / reactor
-		Vector3(  0.0,12.65, -15.0),
-		Vector3(-22.0,12.65,  -6.0),
-		Vector3( 22.0,12.65,  -6.0),
-		Vector3(  0.0,12.65,   5.0),
+		Vector3( -4.0,12.65, -16.0),  # CommandBridge
+		Vector3(-18.0,12.65,  -9.0),  # CommsCorr
+		Vector3( 10.0,12.65, -16.0),  # ReactorControl
+		Vector3( 25.0,12.65,  -3.0),  # ESpine2
 	]:
 		var spawn = Node3D.new()
 		spawn.name = "ThreatSpawn"
@@ -188,6 +243,9 @@ func _build_arena() -> void:
 	_build_interior_partitions()
 	_build_vent_markers()
 	_build_npc_survivors()
+	_build_steam_vents()
+	_build_reverb_zones()
+	_spawn_death_memorials()
 	ambient_event_timer = randf_range(6.0, 12.0)
 
 func _register_nav_blocker(world_position: Vector3, size: Vector3) -> void:
@@ -335,131 +393,179 @@ func _blocker_intersects_ground_nav(world_position: Vector3, size: Vector3) -> b
 
 func _get_station_room_specs() -> Array[Dictionary]:
 	# Astra Relay Station K-17 — four floors, each 3.0m ceiling, 4.2m floor separation
+	# All rooms placed edge-to-edge so adjacent walls share the same coordinate.
 	var f0 := 0.0
 	var f1 := 4.2
 	var f2 := 8.4
 	var f3 := 12.6
 	return [
-		# ═══════════════════════════════════════════════════
+		# ═══════════════════════════════════════════════════════════════
 		# FLOOR 0 — ARRIVAL / CARGO / UTILITIES / POWER
-		# ═══════════════════════════════════════════════════
-		# f0_arrival
-		{"name":"F0_AirlockEntry",    "position":Vector3(  0,f0,-34), "size":Vector2( 6, 7), "sector_id":"f0_arrival",    "open_sides":["south"]},
-		{"name":"F0_ArrivalCorr",     "position":Vector3(  0,f0,-28), "size":Vector2( 4, 6), "sector_id":"f0_arrival",    "open_sides":["north","south"]},
-		{"name":"F0_SecurityCheck",   "position":Vector3(  0,f0,-21), "size":Vector2(10, 6), "sector_id":"f0_arrival",    "open_sides":["north","south","east","west"]},
-		{"name":"F0_SecurityOffice",  "position":Vector3(  8,f0,-21), "size":Vector2( 6, 5), "sector_id":"f0_arrival",    "open_sides":["west"]},
-		{"name":"F0_HoldingCell",     "position":Vector3( -8,f0,-21), "size":Vector2( 6, 5), "sector_id":"f0_arrival",    "open_sides":["east"]},
-		{"name":"F0_LobbyCorr",       "position":Vector3(  0,f0,-15), "size":Vector2( 4, 4), "sector_id":"f0_arrival",    "open_sides":["north","south"]},
-		{"name":"F0_ReceptionLobby",  "position":Vector3(  0,f0, -9), "size":Vector2(16, 8), "sector_id":"f0_arrival",    "open_sides":["north","south","east","west"]},
-		{"name":"F0_VisitorWaiting",  "position":Vector3(-11,f0, -9), "size":Vector2( 6, 6), "sector_id":"f0_arrival",    "open_sides":["east"]},
-		{"name":"F0_AdminRecords",    "position":Vector3( 11,f0, -9), "size":Vector2( 6, 6), "sector_id":"f0_arrival",    "open_sides":["west"]},
-		{"name":"F0_CentralJunct",    "position":Vector3(  0,f0, -3), "size":Vector2( 6, 6), "sector_id":"f0_arrival",    "open_sides":["north","south","east","west"]},
-		# f0_cargo
-		{"name":"F0_CargoCorr",       "position":Vector3( 10,f0, -3), "size":Vector2( 8, 4), "sector_id":"f0_cargo",      "open_sides":["east","west"]},
-		{"name":"F0_CargoHub",        "position":Vector3( 22,f0, -3), "size":Vector2(10,10), "sector_id":"f0_cargo",      "open_sides":["west","north","east"]},
-		{"name":"F0_CargoNCorr",      "position":Vector3( 22,f0,-11), "size":Vector2( 4, 6), "sector_id":"f0_cargo",      "open_sides":["north","south"]},
-		{"name":"F0_CargoBay",        "position":Vector3( 33,f0, -3), "size":Vector2( 8,10), "sector_id":"f0_cargo",      "open_sides":["west"]},
-		{"name":"F0_LoadingDock",     "position":Vector3( 22,f0,  8), "size":Vector2(10, 8), "sector_id":"f0_cargo",      "open_sides":["north","west"]},
-		{"name":"F0_ForkliftCharge",  "position":Vector3( 33,f0,  5), "size":Vector2( 7, 6), "sector_id":"f0_cargo",      "open_sides":["west","south"]},
-		{"name":"F0_ColdStorage",     "position":Vector3( 33,f0, 13), "size":Vector2( 8, 8), "sector_id":"f0_cargo",      "open_sides":["west","north"]},
-		# f0_utilities
-		{"name":"F0_UtilCorr",        "position":Vector3(-10,f0, -3), "size":Vector2( 8, 4), "sector_id":"f0_utilities",  "open_sides":["east","west"]},
-		{"name":"F0_WaterTreatment",  "position":Vector3(-22,f0, -3), "size":Vector2( 8, 8), "sector_id":"f0_utilities",  "open_sides":["east","south"]},
-		{"name":"F0_WasteProcessing", "position":Vector3(-22,f0,  7), "size":Vector2( 8, 7), "sector_id":"f0_utilities",  "open_sides":["north"]},
-		{"name":"F0_MaintCorr",       "position":Vector3(-30,f0, -3), "size":Vector2( 6, 4), "sector_id":"f0_utilities",  "open_sides":["east","west"]},
-		{"name":"F0_MaintWorkshop",   "position":Vector3(-38,f0, -3), "size":Vector2( 8, 8), "sector_id":"f0_utilities",  "open_sides":["east","south"]},
-		# f0_power
-		{"name":"F0_PowerJunct",      "position":Vector3(  0,f0,  5), "size":Vector2( 6, 8), "sector_id":"f0_power",      "open_sides":["north","south","east","west"]},
-		{"name":"F0_PowerCorr",       "position":Vector3(  0,f0, 13), "size":Vector2( 4, 6), "sector_id":"f0_power",      "open_sides":["north","south"]},
-		{"name":"F0_GenControl",      "position":Vector3(-13,f0, 16), "size":Vector2( 8, 6), "sector_id":"f0_power",      "open_sides":["north","south"]},
-		{"name":"F0_GenRoom",         "position":Vector3(-13,f0, 24), "size":Vector2(10, 8), "sector_id":"f0_power",      "open_sides":["north","east"]},
-		{"name":"F0_BatteryBackup",   "position":Vector3( -3,f0, 24), "size":Vector2( 8, 6), "sector_id":"f0_power",      "open_sides":["west","north"]},
-		{"name":"F0_TransformerRoom", "position":Vector3( 10,f0, 16), "size":Vector2( 8, 6), "sector_id":"f0_power",      "open_sides":["north","west"]},
-		{"name":"F0_SpareParts",      "position":Vector3( 10,f0, 24), "size":Vector2( 8, 6), "sector_id":"f0_power",      "open_sides":["north","west"]},
-		# F0 stairwell entries
-		{"name":"F0_WStairEntry",     "position":Vector3(-38,f0,  6), "size":Vector2( 4, 6), "sector_id":"f0_utilities",  "open_sides":["north","east"]},
-		{"name":"F0_EStairEntry",     "position":Vector3( 38,f0, -3), "size":Vector2( 4, 6), "sector_id":"f0_cargo",      "open_sides":["west"]},
-		# ═══════════════════════════════════════════════════
+		# All F0 positions verified edge-to-edge:
+		#   north wall z = center_z - size_z/2
+		#   south wall z = center_z + size_z/2
+		#   east  wall x = center_x + size_x/2
+		#   west  wall x = center_x - size_x/2
+		# ═══════════════════════════════════════════════════════════════
+		# --- f0_arrival spine (x=0, marching south) ---
+		# AirlockEntry  z[-36,-30]
+		{"name":"F0_AirlockEntry",    "position":Vector3(  0,f0,-33.0), "size":Vector2( 6, 6), "sector_id":"f0_arrival",   "open_sides":["south"]},
+		# ArrivalCorr   z[-30,-25]  north=-30=AirlockEntry.south
+		{"name":"F0_ArrivalCorr",     "position":Vector3(  0,f0,-27.5), "size":Vector2( 4, 5), "sector_id":"f0_arrival",   "open_sides":["north","south"]},
+		# SecurityCheck z[-25,-18]  north=-25=ArrivalCorr.south
+		{"name":"F0_SecurityCheck",   "position":Vector3(  0,f0,-21.5), "size":Vector2(10, 7), "sector_id":"f0_arrival",   "open_sides":["north","south","east","west"]},
+		# SecurityOffice  west=5=SecurityCheck.east  (same center_z → doors align)
+		{"name":"F0_SecurityOffice",  "position":Vector3(  8,f0,-21.5), "size":Vector2( 6, 7), "sector_id":"f0_arrival",   "open_sides":["west"]},
+		# HoldingCell     east=-5=SecurityCheck.west
+		{"name":"F0_HoldingCell",     "position":Vector3( -8,f0,-21.5), "size":Vector2( 6, 7), "sector_id":"f0_arrival",   "open_sides":["east"]},
+		# LobbyCorr     z[-18,-14]  north=-18=SecurityCheck.south
+		{"name":"F0_LobbyCorr",       "position":Vector3(  0,f0,-16.0), "size":Vector2( 4, 4), "sector_id":"f0_arrival",   "open_sides":["north","south"]},
+		# ReceptionLobby z[-14,-6]  north=-14=LobbyCorr.south
+		{"name":"F0_ReceptionLobby",  "position":Vector3(  0,f0,-10.0), "size":Vector2(14, 8), "sector_id":"f0_arrival",   "open_sides":["north","south","east","west"]},
+		# VisitorWaiting  east=-7=ReceptionLobby.west  (same center_z → doors align)
+		{"name":"F0_VisitorWaiting",  "position":Vector3(-10,f0,-10.0), "size":Vector2( 6, 8), "sector_id":"f0_arrival",   "open_sides":["east"]},
+		# AdminRecords    west=7=ReceptionLobby.east
+		{"name":"F0_AdminRecords",    "position":Vector3( 10,f0,-10.0), "size":Vector2( 6, 8), "sector_id":"f0_arrival",   "open_sides":["west"]},
+		# CentralJunct  z[-6,0]     north=-6=ReceptionLobby.south
+		{"name":"F0_CentralJunct",    "position":Vector3(  0,f0, -3.0), "size":Vector2( 6, 6), "sector_id":"f0_arrival",   "open_sides":["north","south","east","west"]},
+
+		# --- f0_cargo (east branch from CentralJunct) ---
+		# CargoCorr     x[3,11]    west=3=CentralJunct.east
+		{"name":"F0_CargoCorr",       "position":Vector3(  7,f0, -3.0), "size":Vector2( 8, 4), "sector_id":"f0_cargo",     "open_sides":["east","west"]},
+		# CargoHub      x[11,21]   west=11=CargoCorr.east   z[-8,2]
+		{"name":"F0_CargoHub",        "position":Vector3( 16,f0, -3.0), "size":Vector2(10,10), "sector_id":"f0_cargo",     "open_sides":["west","north","east","south"]},
+		# CargoNCorr    z[-12,-8]  south=-8=CargoHub.north
+		{"name":"F0_CargoNCorr",      "position":Vector3( 16,f0,-10.0), "size":Vector2( 4, 4), "sector_id":"f0_cargo",     "open_sides":["south"]},
+		# CargoBay      x[21,29]   west=21=CargoHub.east    z[-8,2]
+		{"name":"F0_CargoBay",        "position":Vector3( 25,f0, -3.0), "size":Vector2( 8,10), "sector_id":"f0_cargo",     "open_sides":["west","east","south"]},
+		# LoadingDock   z[2,10]    north=2=CargoHub.south   x[11,21]
+		{"name":"F0_LoadingDock",     "position":Vector3( 16,f0,  6.0), "size":Vector2(10, 8), "sector_id":"f0_cargo",     "open_sides":["north","east"]},
+		# ColdStorage   x[21,29]   west=21=LoadingDock.east  north=2=CargoBay.south
+		{"name":"F0_ColdStorage",     "position":Vector3( 25,f0,  6.0), "size":Vector2( 8, 8), "sector_id":"f0_cargo",     "open_sides":["north","west","south"]},
+		# ForkliftCharge z[10,16]  north=10=ColdStorage.south
+		{"name":"F0_ForkliftCharge",  "position":Vector3( 25,f0, 13.0), "size":Vector2( 7, 6), "sector_id":"f0_cargo",     "open_sides":["north"]},
+		# EStairCorr    x[29,33]   west=29=CargoBay.east    z[-8,2]
+		{"name":"F0_EStairCorr",      "position":Vector3( 31,f0, -3.0), "size":Vector2( 4,10), "sector_id":"f0_cargo",     "open_sides":["west","east"]},
+		# EStairEntry   x[33,37]   west=33=EStairCorr.east
+		{"name":"F0_EStairEntry",     "position":Vector3( 35,f0, -3.0), "size":Vector2( 4, 6), "sector_id":"f0_cargo",     "open_sides":["west"]},
+
+		# --- f0_utilities (west branch from CentralJunct) ---
+		# UtilCorr      x[-11,-3]  east=-3=CentralJunct.west
+		{"name":"F0_UtilCorr",        "position":Vector3( -7,f0, -3.0), "size":Vector2( 8, 4), "sector_id":"f0_utilities", "open_sides":["east","west"]},
+		# WaterTreatment x[-19,-11] east=-11=UtilCorr.west   z[-7,1]
+		{"name":"F0_WaterTreatment",  "position":Vector3(-15,f0, -3.0), "size":Vector2( 8, 8), "sector_id":"f0_utilities", "open_sides":["east","south"]},
+		# WasteProcessing z[1,9]   north=1=WaterTreatment.south
+		{"name":"F0_WasteProcessing", "position":Vector3(-15,f0,  5.0), "size":Vector2( 8, 8), "sector_id":"f0_utilities", "open_sides":["north"]},
+		# MaintCorr     x[-25,-19] east=-19=WaterTreatment.west
+		{"name":"F0_MaintCorr",       "position":Vector3(-22,f0, -3.0), "size":Vector2( 6, 4), "sector_id":"f0_utilities", "open_sides":["east","west"]},
+		# MaintWorkshop x[-33,-25] east=-25=MaintCorr.west   z[-7,1]
+		{"name":"F0_MaintWorkshop",   "position":Vector3(-29,f0, -3.0), "size":Vector2( 8, 8), "sector_id":"f0_utilities", "open_sides":["east","south"]},
+		# WStairEntry   z[1,9]     north=1=MaintWorkshop.south  (stairwell at x=-29)
+		{"name":"F0_WStairEntry",     "position":Vector3(-29,f0,  5.0), "size":Vector2( 6, 8), "sector_id":"f0_utilities", "open_sides":["north"]},
+
+		# --- f0_power (south branch from CentralJunct) ---
+		# PowerJunct    z[0,6]     north=0=CentralJunct.south
+		{"name":"F0_PowerJunct",      "position":Vector3(  0,f0,  3.0), "size":Vector2( 6, 6), "sector_id":"f0_power",     "open_sides":["north","south"]},
+		# PowerCorr     z[6,11]    north=6=PowerJunct.south
+		{"name":"F0_PowerCorr",       "position":Vector3(  0,f0,  8.5), "size":Vector2( 4, 5), "sector_id":"f0_power",     "open_sides":["north","south"]},
+		# PowerHub      z[11,17]   north=11=PowerCorr.south   x[-6,6]
+		{"name":"F0_PowerHub",        "position":Vector3(  0,f0, 14.0), "size":Vector2(12, 6), "sector_id":"f0_power",     "open_sides":["north","west","east","south"]},
+		# GenControl    x[-14,-6]  east=-6=PowerHub.west   z[11,17]
+		{"name":"F0_GenControl",      "position":Vector3(-10,f0, 14.0), "size":Vector2( 8, 6), "sector_id":"f0_power",     "open_sides":["east","south"]},
+		# TransformerRoom x[6,14]  west=6=PowerHub.east    z[11,17]
+		{"name":"F0_TransformerRoom", "position":Vector3( 10,f0, 14.0), "size":Vector2( 8, 6), "sector_id":"f0_power",     "open_sides":["west","south"]},
+		# GenRoom       z[17,25]   north=17=GenControl.south  x[-16,-6]
+		{"name":"F0_GenRoom",         "position":Vector3(-11,f0, 21.0), "size":Vector2(10, 8), "sector_id":"f0_power",     "open_sides":["north","east"]},
+		# BatteryBackup x[-6,6]    west=-6=GenRoom.east  north=17=PowerHub.south  east=6=SpareParts.west
+		{"name":"F0_BatteryBackup",   "position":Vector3(  0,f0, 21.0), "size":Vector2(12, 8), "sector_id":"f0_power",     "open_sides":["north","west","east"]},
+		# SpareParts    x[6,14]    west=6=BatteryBackup.east  north=17=TransformerRoom.south
+		{"name":"F0_SpareParts",      "position":Vector3( 10,f0, 21.0), "size":Vector2( 8, 8), "sector_id":"f0_power",     "open_sides":["north","west"]},
+
+		# ═══════════════════════════════════════════════════════════════
 		# FLOOR 1 — CREW QUARTERS / MEDICAL / LIVING
-		# ═══════════════════════════════════════════════════
-		# f1_quarters
-		{"name":"F1_QrtCorr",         "position":Vector3(  0,f1, -6), "size":Vector2( 6, 6), "sector_id":"f1_quarters",   "open_sides":["north","south","east","west"], "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_CrewCommons",     "position":Vector3(  0,f1,-13), "size":Vector2(12, 6), "sector_id":"f1_quarters",   "open_sides":["north","south"],               "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_BunkA",           "position":Vector3(-10,f1,-20), "size":Vector2( 7, 6), "sector_id":"f1_quarters",   "open_sides":["south","east"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_BunkB",           "position":Vector3(  0,f1,-20), "size":Vector2( 7, 6), "sector_id":"f1_quarters",   "open_sides":["south","north"],               "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_BunkC",           "position":Vector3( 10,f1,-20), "size":Vector2( 7, 6), "sector_id":"f1_quarters",   "open_sides":["north","west"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_CrewLockers",     "position":Vector3(  0,f1,-27), "size":Vector2(10, 6), "sector_id":"f1_quarters",   "open_sides":["north"],                       "floor_y":f1, "ceiling_y":f1+3.0},
-		# f1_medical
-		{"name":"F1_MedCorr",         "position":Vector3( 11,f1, -6), "size":Vector2( 6, 4), "sector_id":"f1_medical",    "open_sides":["east","west"],                 "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_MedReception",    "position":Vector3( 22,f1, -6), "size":Vector2( 8, 8), "sector_id":"f1_medical",    "open_sides":["west","south","east"],          "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_Pharmacy",        "position":Vector3( 22,f1,  4), "size":Vector2( 7, 6), "sector_id":"f1_medical",    "open_sides":["north","east"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_ExamRoom1",       "position":Vector3( 32,f1,-10), "size":Vector2( 6, 6), "sector_id":"f1_medical",    "open_sides":["south","west"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_ExamRoom2",       "position":Vector3( 32,f1, -3), "size":Vector2( 6, 6), "sector_id":"f1_medical",    "open_sides":["north","west"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_Surgery",         "position":Vector3( 32,f1,  6), "size":Vector2( 8, 6), "sector_id":"f1_medical",    "open_sides":["north","west"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_Morgue",          "position":Vector3( 32,f1, 14), "size":Vector2( 7, 6), "sector_id":"f1_medical",    "open_sides":["north","west"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		# f1_living
-		{"name":"F1_LivingCorr",      "position":Vector3(-11,f1, -6), "size":Vector2( 6, 4), "sector_id":"f1_living",     "open_sides":["east","west"],                 "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_MessHall",        "position":Vector3(-22,f1, -3), "size":Vector2(10, 8), "sector_id":"f1_living",     "open_sides":["east","north","west"],          "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_Kitchen",         "position":Vector3(-34,f1, -3), "size":Vector2( 8, 8), "sector_id":"f1_living",     "open_sides":["east"],                        "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_FoodStorage",     "position":Vector3(-34,f1,  7), "size":Vector2( 7, 6), "sector_id":"f1_living",     "open_sides":["north","east"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_RecRoom",         "position":Vector3(-22,f1,  8), "size":Vector2(10, 8), "sector_id":"f1_living",     "open_sides":["north","east"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_Gym",             "position":Vector3(-22,f1, 18), "size":Vector2(10, 8), "sector_id":"f1_living",     "open_sides":["north","south"],               "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_Showers",         "position":Vector3(-10,f1, 18), "size":Vector2( 6, 6), "sector_id":"f1_living",     "open_sides":["north","west"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_Laundry",         "position":Vector3(  0,f1, 18), "size":Vector2( 6, 6), "sector_id":"f1_living",     "open_sides":["north","west"],                "floor_y":f1, "ceiling_y":f1+3.0},
-		# F1 stairwell landings
-		{"name":"F1_WStairLand",      "position":Vector3(-38,f1,  6), "size":Vector2( 4, 8), "sector_id":"f1_quarters",   "open_sides":["east","north","south"],         "floor_y":f1, "ceiling_y":f1+3.0},
-		{"name":"F1_EStairLand",      "position":Vector3( 38,f1, -3), "size":Vector2( 4, 6), "sector_id":"f1_medical",    "open_sides":["west","north","south"],         "floor_y":f1, "ceiling_y":f1+3.0},
-		# ═══════════════════════════════════════════════════
+		# E-W spine at z=-3 connects both stairwells; branches hang N and S.
+		# All branch rooms connect at z=-6 (spine.north) or z=0 (spine.south).
+		# ═══════════════════════════════════════════════════════════════
+		# --- F1 spine ---
+		{"name":"F1_WStairLand",   "position":Vector3(-29,f1,-3.0), "size":Vector2( 8, 6), "sector_id":"f1_quarters", "open_sides":["east"],                       "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_WSpine",       "position":Vector3(-18,f1,-3.0), "size":Vector2(14, 6), "sector_id":"f1_quarters", "open_sides":["west","east","north","south"], "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_MidSpine",     "position":Vector3( -4,f1,-3.0), "size":Vector2(14, 6), "sector_id":"f1_medical",  "open_sides":["west","east","north","south"], "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_ESpine",       "position":Vector3( 10,f1,-3.0), "size":Vector2(14, 6), "sector_id":"f1_medical",  "open_sides":["west","east","north","south"], "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_ESpine2",      "position":Vector3( 25,f1,-3.0), "size":Vector2(16, 6), "sector_id":"f1_living",   "open_sides":["west","east","north","south"], "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_EStairLand",   "position":Vector3( 35,f1,-3.0), "size":Vector2( 4, 6), "sector_id":"f1_living",   "open_sides":["west"],                       "floor_y":f1, "ceiling_y":f1+3.0},
+		# --- F1 WSpine branches (center_x=-18) ---
+		{"name":"F1_QuartersCorr", "position":Vector3(-18,f1,-9.0), "size":Vector2(10, 6), "sector_id":"f1_quarters", "open_sides":["south","north"],              "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_BunkRoom",     "position":Vector3(-18,f1,-16.0),"size":Vector2(14, 8), "sector_id":"f1_quarters", "open_sides":["south"],                      "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_MessHall",     "position":Vector3(-18,f1, 4.0), "size":Vector2(14, 8), "sector_id":"f1_living",   "open_sides":["north"],                      "floor_y":f1, "ceiling_y":f1+3.0},
+		# --- F1 MidSpine branches (center_x=-4) ---
+		{"name":"F1_MedCorr",      "position":Vector3( -4,f1,-9.0), "size":Vector2(10, 6), "sector_id":"f1_medical",  "open_sides":["south","north"],              "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_MedBay",       "position":Vector3( -4,f1,-16.0),"size":Vector2(12, 8), "sector_id":"f1_medical",  "open_sides":["south"],                      "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_RecRoom",      "position":Vector3( -4,f1, 4.0), "size":Vector2(12, 8), "sector_id":"f1_living",   "open_sides":["north"],                      "floor_y":f1, "ceiling_y":f1+3.0},
+		# --- F1 ESpine branches (center_x=10) ---
+		{"name":"F1_Pharmacy",     "position":Vector3( 10,f1,-9.0), "size":Vector2(10, 6), "sector_id":"f1_medical",  "open_sides":["south","north"],              "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_ExamRoom",     "position":Vector3( 10,f1,-16.0),"size":Vector2(10, 8), "sector_id":"f1_medical",  "open_sides":["south"],                      "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_Gym",          "position":Vector3( 10,f1, 5.0), "size":Vector2(12,10), "sector_id":"f1_living",   "open_sides":["north","south"],              "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_Showers",      "position":Vector3( 10,f1,13.0), "size":Vector2(10, 6), "sector_id":"f1_living",   "open_sides":["north"],                      "floor_y":f1, "ceiling_y":f1+3.0},
+		# --- F1 ESpine2 branches (center_x=25) ---
+		{"name":"F1_Surgery",      "position":Vector3( 25,f1,-9.0), "size":Vector2(10, 6), "sector_id":"f1_medical",  "open_sides":["south","north"],              "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_Morgue",       "position":Vector3( 25,f1,-16.0),"size":Vector2(10, 8), "sector_id":"f1_medical",  "open_sides":["south"],                      "floor_y":f1, "ceiling_y":f1+3.0},
+		{"name":"F1_FoodStorage",  "position":Vector3( 25,f1, 4.0), "size":Vector2(12, 8), "sector_id":"f1_living",   "open_sides":["north"],                      "floor_y":f1, "ceiling_y":f1+3.0},
+
+		# ═══════════════════════════════════════════════════════════════
 		# FLOOR 2 — RESEARCH LABS / CONTAINMENT / R&D
-		# ═══════════════════════════════════════════════════
-		# f2_labs
-		{"name":"F2_DeconEntry",      "position":Vector3(  0,f2, -6), "size":Vector2( 8, 6), "sector_id":"f2_labs",       "open_sides":["north","south","east","west"],  "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_ResearchHub",     "position":Vector3(  0,f2,-14), "size":Vector2(12, 8), "sector_id":"f2_labs",       "open_sides":["north","south","east","west"],  "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_WetLab",          "position":Vector3(-10,f2,-22), "size":Vector2( 8, 8), "sector_id":"f2_labs",       "open_sides":["south","east"],                "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_ChemStorage",     "position":Vector3(  8,f2,-22), "size":Vector2( 7, 7), "sector_id":"f2_labs",       "open_sides":["south","west"],                "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_SampleFreezer",   "position":Vector3(-20,f2,-14), "size":Vector2( 8, 6), "sector_id":"f2_labs",       "open_sides":["north","east"],                "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_MicroscopyRoom",  "position":Vector3(-20,f2, -6), "size":Vector2( 7, 7), "sector_id":"f2_labs",       "open_sides":["north","east"],                "floor_y":f2, "ceiling_y":f2+3.0},
-		# f2_containment
-		{"name":"F2_ContainCorr",     "position":Vector3(  0,f2,  4), "size":Vector2( 6, 6), "sector_id":"f2_containment","open_sides":["north","south","east","west"],  "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_ContainmentA",    "position":Vector3(-12,f2,  4), "size":Vector2( 8, 8), "sector_id":"f2_containment","open_sides":["south","east"],                "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_ContainmentB",    "position":Vector3( 12,f2,  4), "size":Vector2( 8, 8), "sector_id":"f2_containment","open_sides":["south","west"],                "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_ObservRoom",      "position":Vector3(  0,f2, 11), "size":Vector2(10, 6), "sector_id":"f2_containment","open_sides":["north","west","east"],          "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_QuarantineCell",  "position":Vector3(-22,f2,  4), "size":Vector2( 6, 6), "sector_id":"f2_containment","open_sides":["east"],                        "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_SpecimenPrep",    "position":Vector3(  0,f2, 20), "size":Vector2( 8, 8), "sector_id":"f2_containment","open_sides":["north","south"],               "floor_y":f2, "ceiling_y":f2+3.0},
-		# f2_research
-		{"name":"F2_ResearchCorr",    "position":Vector3( 12,f2, -6), "size":Vector2( 6, 4), "sector_id":"f2_research",   "open_sides":["east","west"],                 "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_DryLab",          "position":Vector3( 22,f2, -6), "size":Vector2( 8, 8), "sector_id":"f2_research",   "open_sides":["west","north","east"],          "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_RoboticsBay",     "position":Vector3( 22,f2,  4), "size":Vector2(10, 8), "sector_id":"f2_research",   "open_sides":["north","west"],                "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_ServerAnalysis",  "position":Vector3( 10,f2,-14), "size":Vector2( 8, 7), "sector_id":"f2_research",   "open_sides":["north","west"],                "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_SecureArchive",   "position":Vector3( 10,f2,-22), "size":Vector2( 8, 7), "sector_id":"f2_research",   "open_sides":["north","south"],               "floor_y":f2, "ceiling_y":f2+3.0},
-		# F2 stairwell landings
-		{"name":"F2_WStairLand",      "position":Vector3(-38,f2,  2), "size":Vector2( 4, 8), "sector_id":"f2_labs",       "open_sides":["east","north","south"],         "floor_y":f2, "ceiling_y":f2+3.0},
-		{"name":"F2_EStairLand",      "position":Vector3( 38,f2,  2), "size":Vector2( 4, 6), "sector_id":"f2_research",   "open_sides":["west","north","south"],         "floor_y":f2, "ceiling_y":f2+3.0},
-		# ═══════════════════════════════════════════════════
+		# Same E-W spine layout as F1; different room names.
+		# ═══════════════════════════════════════════════════════════════
+		{"name":"F2_WStairLand",   "position":Vector3(-29,f2,-3.0), "size":Vector2( 8, 6), "sector_id":"f2_labs",        "open_sides":["east"],                       "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_WSpine",       "position":Vector3(-18,f2,-3.0), "size":Vector2(14, 6), "sector_id":"f2_labs",        "open_sides":["west","east","north","south"], "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_MidSpine",     "position":Vector3( -4,f2,-3.0), "size":Vector2(14, 6), "sector_id":"f2_containment", "open_sides":["west","east","north","south"], "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_ESpine",       "position":Vector3( 10,f2,-3.0), "size":Vector2(14, 6), "sector_id":"f2_research",    "open_sides":["west","east","north","south"], "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_ESpine2",      "position":Vector3( 25,f2,-3.0), "size":Vector2(16, 6), "sector_id":"f2_research",    "open_sides":["west","east","north","south"], "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_EStairLand",   "position":Vector3( 35,f2,-3.0), "size":Vector2( 4, 6), "sector_id":"f2_research",    "open_sides":["west"],                       "floor_y":f2, "ceiling_y":f2+3.0},
+		# --- F2 WSpine branches ---
+		{"name":"F2_DeconCorr",    "position":Vector3(-18,f2,-9.0), "size":Vector2(10, 6), "sector_id":"f2_labs",        "open_sides":["south","north"],              "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_WetLab",       "position":Vector3(-18,f2,-16.0),"size":Vector2(12, 8), "sector_id":"f2_labs",        "open_sides":["south"],                      "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_ContainmentA", "position":Vector3(-18,f2, 4.0), "size":Vector2(14, 8), "sector_id":"f2_containment", "open_sides":["north"],                      "floor_y":f2, "ceiling_y":f2+3.0},
+		# --- F2 MidSpine branches ---
+		{"name":"F2_ResearchHub",  "position":Vector3( -4,f2,-9.0), "size":Vector2(12, 6), "sector_id":"f2_containment", "open_sides":["south","north"],              "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_SampleFreezer","position":Vector3( -4,f2,-16.0),"size":Vector2(10, 8), "sector_id":"f2_labs",        "open_sides":["south"],                      "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_SpecimenPrep", "position":Vector3( -4,f2, 4.0), "size":Vector2(12, 8), "sector_id":"f2_containment", "open_sides":["north"],                      "floor_y":f2, "ceiling_y":f2+3.0},
+		# --- F2 ESpine branches ---
+		{"name":"F2_ChemStorage",  "position":Vector3( 10,f2,-9.0), "size":Vector2(10, 6), "sector_id":"f2_research",    "open_sides":["south","north"],              "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_SecureArchive","position":Vector3( 10,f2,-16.0),"size":Vector2(10, 8), "sector_id":"f2_research",    "open_sides":["south"],                      "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_RoboticsBay",  "position":Vector3( 10,f2, 5.0), "size":Vector2(12,10), "sector_id":"f2_research",    "open_sides":["north","south"],              "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_ObservRoom",   "position":Vector3( 10,f2,13.0), "size":Vector2(10, 6), "sector_id":"f2_containment", "open_sides":["north"],                      "floor_y":f2, "ceiling_y":f2+3.0},
+		# --- F2 ESpine2 branches ---
+		{"name":"F2_DryLab",       "position":Vector3( 25,f2,-9.0), "size":Vector2(10, 6), "sector_id":"f2_research",    "open_sides":["south","north"],              "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_ServerAnalysis","position":Vector3( 25,f2,-16.0),"size":Vector2(10, 8), "sector_id":"f2_research",    "open_sides":["south"],                      "floor_y":f2, "ceiling_y":f2+3.0},
+		{"name":"F2_QuarantineCell","position":Vector3( 25,f2, 4.0), "size":Vector2(10, 8), "sector_id":"f2_containment", "open_sides":["north"],                      "floor_y":f2, "ceiling_y":f2+3.0},
+
+		# ═══════════════════════════════════════════════════════════════
 		# FLOOR 3 — COMMAND / COMMUNICATIONS / REACTOR
-		# ═══════════════════════════════════════════════════
-		# f3_command
-		{"name":"F3_CmdCorr",         "position":Vector3(  0,f3, -6), "size":Vector2( 6, 6), "sector_id":"f3_command",    "open_sides":["north","south","east","west"],  "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_CommandBridge",   "position":Vector3(  0,f3,-15), "size":Vector2(14, 8), "sector_id":"f3_command",    "open_sides":["north","south","east","west"],  "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_CaptainsOffice",  "position":Vector3(-10,f3,-22), "size":Vector2( 7, 6), "sector_id":"f3_command",    "open_sides":["south","east"],                "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_BriefingRoom",    "position":Vector3(  0,f3,-22), "size":Vector2( 8, 6), "sector_id":"f3_command",    "open_sides":["south"],                       "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_Armory",          "position":Vector3( 10,f3,-22), "size":Vector2( 8, 6), "sector_id":"f3_command",    "open_sides":["south","west"],                "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_SecurityCtrl",    "position":Vector3( 10,f3, -8), "size":Vector2( 7, 6), "sector_id":"f3_command",    "open_sides":["north","west"],                "floor_y":f3, "ceiling_y":f3+3.0},
-		# f3_comms
-		{"name":"F3_CommsCorr",       "position":Vector3(-11,f3, -6), "size":Vector2( 6, 4), "sector_id":"f3_comms",      "open_sides":["east","west"],                 "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_Communications",  "position":Vector3(-22,f3, -6), "size":Vector2( 8, 8), "sector_id":"f3_comms",      "open_sides":["east","south","west"],          "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_AntennaCtrl",     "position":Vector3(-32,f3, -6), "size":Vector2( 7, 8), "sector_id":"f3_comms",      "open_sides":["east","west","south"],          "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_SensorRoom",      "position":Vector3(-32,f3,  5), "size":Vector2( 7, 6), "sector_id":"f3_comms",      "open_sides":["north"],                       "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_NavigationRoom",  "position":Vector3(-22,f3,  5), "size":Vector2( 7, 6), "sector_id":"f3_comms",      "open_sides":["north","west"],                "floor_y":f3, "ceiling_y":f3+3.0},
-		# f3_reactor
-		{"name":"F3_ReactorCorr",     "position":Vector3( 11,f3, -6), "size":Vector2( 6, 4), "sector_id":"f3_reactor",    "open_sides":["east","west"],                 "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_ReactorControl",  "position":Vector3( 22,f3, -6), "size":Vector2( 8, 8), "sector_id":"f3_reactor",    "open_sides":["west","north"],                "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_CoolantMonitor",  "position":Vector3( 32,f3, -6), "size":Vector2( 7, 6), "sector_id":"f3_reactor",    "open_sides":["north","west"],                "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_EmergPowerCtrl",  "position":Vector3( 32,f3,  2), "size":Vector2( 7, 6), "sector_id":"f3_reactor",    "open_sides":["north"],                       "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_EscapePodAccess", "position":Vector3( 32,f3,-14), "size":Vector2( 7, 6), "sector_id":"f3_reactor",    "open_sides":["north"],                       "floor_y":f3, "ceiling_y":f3+3.0},
-		# F3 stairwell landings
-		{"name":"F3_WStairLand",      "position":Vector3(-38,f3,  6), "size":Vector2( 4, 8), "sector_id":"f3_comms",      "open_sides":["east","north","south"],         "floor_y":f3, "ceiling_y":f3+3.0},
-		{"name":"F3_EStairLand",      "position":Vector3( 38,f3, -3), "size":Vector2( 4, 6), "sector_id":"f3_reactor",    "open_sides":["west","north","south"],         "floor_y":f3, "ceiling_y":f3+3.0},
+		# Same E-W spine layout as F1/F2; different room names.
+		# ═══════════════════════════════════════════════════════════════
+		{"name":"F3_WStairLand",      "position":Vector3(-29,f3,-3.0), "size":Vector2( 8, 6), "sector_id":"f3_comms",   "open_sides":["east"],                       "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_WSpine",          "position":Vector3(-18,f3,-3.0), "size":Vector2(14, 6), "sector_id":"f3_comms",   "open_sides":["west","east","north","south"], "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_MidSpine",        "position":Vector3( -4,f3,-3.0), "size":Vector2(14, 6), "sector_id":"f3_command", "open_sides":["west","east","north","south"], "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_ESpine",          "position":Vector3( 10,f3,-3.0), "size":Vector2(14, 6), "sector_id":"f3_reactor", "open_sides":["west","east","north","south"], "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_ESpine2",         "position":Vector3( 25,f3,-3.0), "size":Vector2(16, 6), "sector_id":"f3_reactor", "open_sides":["west","east","north","south"], "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_EStairLand",      "position":Vector3( 35,f3,-3.0), "size":Vector2( 4, 6), "sector_id":"f3_reactor", "open_sides":["west"],                       "floor_y":f3, "ceiling_y":f3+3.0},
+		# --- F3 WSpine branches (comms) ---
+		{"name":"F3_CommsCorr",       "position":Vector3(-18,f3,-9.0), "size":Vector2(10, 6), "sector_id":"f3_comms",   "open_sides":["south","north"],              "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_Communications",  "position":Vector3(-18,f3,-16.0),"size":Vector2(12, 8), "sector_id":"f3_comms",   "open_sides":["south"],                      "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_NavigationRoom",  "position":Vector3(-18,f3, 4.0), "size":Vector2(12, 8), "sector_id":"f3_comms",   "open_sides":["north"],                      "floor_y":f3, "ceiling_y":f3+3.0},
+		# --- F3 MidSpine branches (command) ---
+		{"name":"F3_CmdCorr",         "position":Vector3( -4,f3,-9.0), "size":Vector2(10, 6), "sector_id":"f3_command", "open_sides":["south","north"],              "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_CommandBridge",   "position":Vector3( -4,f3,-16.0),"size":Vector2(14, 8), "sector_id":"f3_command", "open_sides":["south"],                      "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_SecurityCtrl",    "position":Vector3( -4,f3, 4.0), "size":Vector2(12, 8), "sector_id":"f3_command", "open_sides":["north"],                      "floor_y":f3, "ceiling_y":f3+3.0},
+		# --- F3 ESpine branches (reactor) ---
+		{"name":"F3_ReactorCorr",     "position":Vector3( 10,f3,-9.0), "size":Vector2(10, 6), "sector_id":"f3_reactor", "open_sides":["south","north"],              "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_ReactorControl",  "position":Vector3( 10,f3,-16.0),"size":Vector2(12, 8), "sector_id":"f3_reactor", "open_sides":["south"],                      "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_CoolantMonitor",  "position":Vector3( 10,f3, 5.0), "size":Vector2(10,10), "sector_id":"f3_reactor", "open_sides":["north","south"],              "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_EmergPowerCtrl",  "position":Vector3( 10,f3,13.0), "size":Vector2(10, 6), "sector_id":"f3_reactor", "open_sides":["north"],                      "floor_y":f3, "ceiling_y":f3+3.0},
+		# --- F3 ESpine2 branches (reactor/command) ---
+		{"name":"F3_EscapePodAccess", "position":Vector3( 25,f3,-9.0), "size":Vector2(10, 6), "sector_id":"f3_reactor", "open_sides":["south","north"],              "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_ReactorCore",     "position":Vector3( 25,f3,-16.0),"size":Vector2(14, 8), "sector_id":"f3_reactor", "open_sides":["south"],                      "floor_y":f3, "ceiling_y":f3+3.0},
+		{"name":"F3_BriefingRoom",    "position":Vector3( 25,f3, 4.0), "size":Vector2(12, 8), "sector_id":"f3_command", "open_sides":["north"],                      "floor_y":f3, "ceiling_y":f3+3.0},
 	]
 
 func _create_station_room_shell(spec: Dictionary) -> void:
@@ -552,7 +658,7 @@ func _build_station_vertical_connections() -> void:
 
 	for stair_side_raw in [-1, 1]:
 		var stair_side: int = int(stair_side_raw)
-		var sx: float = 38.0 * stair_side
+		var sx: float = 35.0 if stair_side > 0 else -29.0
 		var prefix: String = "WStair" if stair_side < 0 else "EStair"
 		# Shaft outer walls (east/west faces, full height)
 		_create_structural_wall("%sWallOuter" % prefix, Vector3(sx + stair_side * 2.1, floor_h * 1.5, 4.0), Vector3(0.28, floor_h * 3.0 + 2.0, 22.0))
@@ -606,33 +712,215 @@ func _build_station_vertical_connections() -> void:
 	_create_structural_wall("ElevShaftE", Vector3( 1.6, floor_h * 1.5, 0.0), Vector3(0.18, floor_h * 3.0 + 2.0, 4.6))
 
 func _build_room_props() -> void:
-	var prop_specs: Array[Dictionary] = [
-		{"name": "MedStretcher", "position": Vector3(-22.0, 0.3, -21.0), "size": Vector3(0.7, 0.6, 1.8), "color": Color(0.85, 0.88, 0.88)},
-		{"name": "MedCabinetWest", "position": Vector3(-25.0, 0.7, -18.0), "size": Vector3(0.6, 1.4, 1.2), "color": Color(0.22, 0.34, 0.36)},
-		{"name": "MedCabinetEast", "position": Vector3(-19.0, 0.7, -23.0), "size": Vector3(0.6, 1.4, 1.2), "color": Color(0.22, 0.34, 0.36)},
-		{"name": "ArmoryRackLong", "position": Vector3(22.0, 0.5, -23.0), "size": Vector3(0.4, 1.0, 3.0), "color": Color(0.24, 0.26, 0.28)},
-		{"name": "ArmoryCrateA", "position": Vector3(20.0, 0.4, -20.0), "size": Vector3(0.9, 0.8, 0.9), "color": Color(0.18, 0.20, 0.22)},
-		{"name": "ArmoryCrateB", "position": Vector3(24.0, 0.4, -24.0), "size": Vector3(0.9, 0.8, 0.9), "color": Color(0.18, 0.20, 0.22)},
-		{"name": "LabConsoleNorth", "position": Vector3(-22.0, 0.6, -4.0), "size": Vector3(2.0, 1.2, 0.5), "color": Color(0.06, 0.10, 0.12)},
-		{"name": "LabConsoleWest", "position": Vector3(-24.0, 0.6, -1.0), "size": Vector3(0.5, 1.2, 2.0), "color": Color(0.06, 0.10, 0.12)},
-		{"name": "LabSpecimenTank", "position": Vector3(-20.0, 0.7, -1.0), "size": Vector3(0.5, 1.4, 0.5), "color": Color(0.32, 0.52, 0.58)},
-		{"name": "EngGeneratorA", "position": Vector3(-4.0, -3.15, 10.0), "size": Vector3(2.0, 1.6, 1.2), "color": Color(0.28, 0.28, 0.22)},
-		{"name": "EngGeneratorB", "position": Vector3(2.0, -3.15, 6.0), "size": Vector3(2.0, 1.6, 1.2), "color": Color(0.28, 0.28, 0.22)},
-		{"name": "EngPipeRun", "position": Vector3(-8.0, -2.95, 12.0), "size": Vector3(0.4, 2.0, 8.0), "color": Color(0.42, 0.38, 0.28)},
-		{"name": "EngCrate", "position": Vector3(6.0, -3.55, 4.0), "size": Vector3(1.2, 0.8, 1.2), "color": Color(0.22, 0.20, 0.16)},
-		{"name": "CafeTableA", "position": Vector3(-2.0, 0.4, -2.0), "size": Vector3(1.6, 0.8, 0.7), "color": Color(0.28, 0.26, 0.22)},
-		{"name": "CafeTableB", "position": Vector3(3.0, 0.4, -4.0), "size": Vector3(1.6, 0.8, 0.7), "color": Color(0.28, 0.26, 0.22)},
-		{"name": "CafeCounter", "position": Vector3(-5.0, 0.5, -6.0), "size": Vector3(0.5, 1.0, 3.0), "color": Color(0.32, 0.30, 0.26)},
-		{"name": "CommandWorkstation", "position": Vector3(0.0, 4.15, -20.0), "size": Vector3(3.0, 1.0, 0.5), "color": Color(0.06, 0.10, 0.14)},
-		{"name": "CommandPillar", "position": Vector3(8.0, 5.15, -18.0), "size": Vector3(0.4, 3.0, 0.4), "color": Color(0.18, 0.22, 0.26)}
-	]
-	for spec in prop_specs:
-		var prop_position: Vector3 = _dict_vector3(spec, "position", Vector3.ZERO)
-		var prop_size: Vector3 = _dict_vector3(spec, "size", Vector3.ONE)
-		var prop_color: Color = _dict_color(spec, "color", Color(0.22, 0.23, 0.24))
-		_create_box(String(spec.get("name", "RoomProp")), prop_position, prop_size, prop_color, true, "metal")
-		if _blocker_intersects_ground_nav(prop_position, prop_size):
-			_register_nav_blocker(prop_position, prop_size)
+	var f0 := 0.0
+	var f1 := 4.2
+	var f2 := 8.4
+	var f3 := 12.6
+	# Build each room's props at the correct floor height
+	_build_props_f0_arrival(f0)
+	_build_props_f0_cargo(f0)
+	_build_props_f0_power(f0)
+	_build_props_f1_quarters(f1)
+	_build_props_f1_medical(f1)
+	_build_props_f1_living(f1)
+	_build_props_f2_labs(f2)
+	_build_props_f3_command(f3)
+
+func _place_prop(prop_name: String, position: Vector3, size: Vector3, color: Color, surface: String = "metal") -> void:
+	_create_box(prop_name, position, size, color, true, surface)
+	if _blocker_intersects_ground_nav(position, size):
+		_register_nav_blocker(position, size)
+
+func _build_props_f0_arrival(fy: float) -> void:
+	var y := fy + 0.001
+	# SecurityCheck — barriers, scanner arch, security desk
+	_place_prop("SecBarrierA",     Vector3(-3.0, y+0.5, -23.5), Vector3(0.28, 1.0, 2.2), Color(0.28, 0.32, 0.34))
+	_place_prop("SecBarrierB",     Vector3( 3.0, y+0.5, -23.5), Vector3(0.28, 1.0, 2.2), Color(0.28, 0.32, 0.34))
+	_place_prop("SecScannerArch",  Vector3( 0.0, y+1.2, -23.5), Vector3(6.5, 0.22, 0.28), Color(0.22, 0.28, 0.30))
+	_place_prop("SecDesk",         Vector3(-3.5, y+0.45, -19.5), Vector3(2.8, 0.9, 0.6), Color(0.16, 0.20, 0.22))
+	_place_prop("SecMonitor",      Vector3(-3.5, y+1.05, -19.5), Vector3(0.62, 0.42, 0.06), Color(0.04, 0.08, 0.10), "ceiling")
+	_place_prop("SecLockerRow",    Vector3( 4.2, y+0.85, -20.0), Vector3(0.5, 1.7, 3.2), Color(0.18, 0.22, 0.25))
+	# ReceptionLobby — reception desk, seating, info kiosk
+	_place_prop("RecDesk",         Vector3( 2.0, y+0.5, -12.5), Vector3(4.5, 1.0, 0.7), Color(0.22, 0.26, 0.28))
+	_place_prop("RecDeskScreen",   Vector3( 0.5, y+1.18, -12.5), Vector3(1.1, 0.55, 0.06), Color(0.04, 0.08, 0.10))
+	_place_prop("WaitingChairA",   Vector3(-5.5, y+0.35, -11.0), Vector3(0.6, 0.7, 0.6), Color(0.32, 0.28, 0.22))
+	_place_prop("WaitingChairB",   Vector3(-5.5, y+0.35, -9.5),  Vector3(0.6, 0.7, 0.6), Color(0.32, 0.28, 0.22))
+	_place_prop("WaitingChairC",   Vector3(-5.5, y+0.35, -8.0),  Vector3(0.6, 0.7, 0.6), Color(0.32, 0.28, 0.22))
+	_place_prop("InfoKiosk",       Vector3( 5.8, y+0.7, -10.5), Vector3(0.55, 1.4, 0.55), Color(0.08, 0.12, 0.16))
+	_place_prop("InfoKioskScreen", Vector3( 5.8, y+1.5, -10.5), Vector3(0.42, 0.55, 0.05), Color(0.04, 0.08, 0.12))
+	_place_prop("LobbyPillarA",    Vector3(-2.0, y+1.5, -10.0), Vector3(0.35, 3.0, 0.35), Color(0.18, 0.22, 0.24))
+	_place_prop("LobbyPillarB",    Vector3( 4.0, y+1.5, -10.0), Vector3(0.35, 3.0, 0.35), Color(0.18, 0.22, 0.24))
+
+func _build_props_f0_cargo(fy: float) -> void:
+	var y := fy + 0.001
+	# CargoHub — stacked containers, pallet jack, shelving
+	_place_prop("ContainerStackA",  Vector3(13.0, y+0.85, -1.0), Vector3(2.2, 1.7, 2.4), Color(0.28, 0.22, 0.14))
+	_place_prop("ContainerStackB",  Vector3(13.0, y+0.85,  2.5), Vector3(2.2, 1.7, 2.4), Color(0.18, 0.26, 0.18))
+	_place_prop("ContainerStackC",  Vector3(19.5, y+0.85, -6.5), Vector3(2.2, 1.7, 2.4), Color(0.24, 0.22, 0.16))
+	_place_prop("ContainerTopA",    Vector3(13.0, y+2.55, -1.0), Vector3(2.2, 1.7, 2.4), Color(0.22, 0.18, 0.12))
+	_place_prop("PalletJack",       Vector3(17.5, y+0.22, -0.5), Vector3(1.6, 0.44, 3.2), Color(0.42, 0.38, 0.08))
+	_place_prop("CargoShelfA",      Vector3(14.5, y+0.95, -5.5), Vector3(0.28, 1.9, 3.8), Color(0.22, 0.24, 0.26))
+	_place_prop("CargoShelfB",      Vector3(17.5, y+0.95, -5.5), Vector3(0.28, 1.9, 3.8), Color(0.22, 0.24, 0.26))
+	_place_prop("CargoBoxRow1",     Vector3(16.0, y+0.35, -5.0), Vector3(2.8, 0.7, 0.8), Color(0.19, 0.18, 0.14))
+	# ColdStorage — freezer banks, grate floor panels
+	_place_prop("FreezerBankA",     Vector3(22.0, y+0.85,  3.5), Vector3(0.5, 1.7, 3.8), Color(0.62, 0.72, 0.78))
+	_place_prop("FreezerBankB",     Vector3(28.0, y+0.85,  3.5), Vector3(0.5, 1.7, 3.8), Color(0.62, 0.72, 0.78))
+	_place_prop("FreezerBankC",     Vector3(25.0, y+0.85,  8.5), Vector3(5.8, 1.7, 0.5), Color(0.62, 0.72, 0.78))
+	_place_prop("ColdMonitor",      Vector3(25.0, y+1.05,  1.5), Vector3(0.7, 0.42, 0.08), Color(0.04, 0.08, 0.12))
+	# MaintWorkshop — workbench, tool racks, oil drum
+	_place_prop("WorkbenchA",       Vector3(-26.0, y+0.5, -4.5), Vector3(4.5, 1.0, 0.7), Color(0.32, 0.26, 0.18))
+	_place_prop("WorkbenchB",       Vector3(-26.0, y+0.5, -0.5), Vector3(4.5, 1.0, 0.7), Color(0.32, 0.26, 0.18))
+	_place_prop("ToolRackA",        Vector3(-32.0, y+0.9, -4.0), Vector3(0.28, 1.8, 3.2), Color(0.22, 0.24, 0.26))
+	_place_prop("OilDrumA",         Vector3(-30.5, y+0.5, -1.5), Vector3(0.6, 1.0, 0.6), Color(0.22, 0.20, 0.12))
+	_place_prop("OilDrumB",         Vector3(-29.5, y+0.5, -1.5), Vector3(0.6, 1.0, 0.6), Color(0.18, 0.18, 0.10))
+	_place_prop("WeldingStation",   Vector3(-28.5, y+0.65, -3.5), Vector3(0.9, 1.3, 0.9), Color(0.28, 0.24, 0.16))
+
+func _build_props_f0_power(fy: float) -> void:
+	var y := fy + 0.001
+	# PowerHub — main control consoles, status boards
+	_place_prop("PowerConsoleN",    Vector3(-3.0, y+0.6, 11.5), Vector3(5.0, 1.2, 0.5), Color(0.06, 0.10, 0.12))
+	_place_prop("PowerConsoleS",    Vector3( 3.0, y+0.6, 16.5), Vector3(5.0, 1.2, 0.5), Color(0.06, 0.10, 0.12))
+	_place_prop("PowerScreenA",     Vector3(-2.0, y+1.4, 11.5), Vector3(1.2, 0.65, 0.06), Color(0.04, 0.22, 0.18))
+	_place_prop("PowerScreenB",     Vector3( 1.5, y+1.4, 11.5), Vector3(1.2, 0.65, 0.06), Color(0.04, 0.22, 0.18))
+	_place_prop("CentralTower",     Vector3( 0.0, y+0.9, 14.0), Vector3(1.0, 1.8, 1.0), Color(0.12, 0.16, 0.18))
+	# GenRoom — large generators
+	_place_prop("Generator1",       Vector3(-14.0, y+0.8, 18.5), Vector3(2.8, 1.6, 2.2), Color(0.28, 0.26, 0.18))
+	_place_prop("Generator2",       Vector3(-9.0,  y+0.8, 18.5), Vector3(2.8, 1.6, 2.2), Color(0.24, 0.24, 0.16))
+	_place_prop("GenExhaustPipeA",  Vector3(-14.0, y+2.5, 18.5), Vector3(0.5, 1.9, 0.5), Color(0.32, 0.28, 0.20))
+	_place_prop("GenExhaustPipeB",  Vector3(-9.0,  y+2.5, 18.5), Vector3(0.5, 1.9, 0.5), Color(0.32, 0.28, 0.20))
+	_place_prop("GenFuelTankA",     Vector3(-13.0, y+0.55, 24.0), Vector3(1.2, 1.1, 1.2), Color(0.18, 0.16, 0.10))
+	_place_prop("GenFuelTankB",     Vector3(-10.0, y+0.55, 24.0), Vector3(1.2, 1.1, 1.2), Color(0.18, 0.16, 0.10))
+	# BatteryBackup — battery racks
+	_place_prop("BattRackN",        Vector3(-2.0, y+0.9, 18.0), Vector3(6.0, 1.8, 0.38), Color(0.14, 0.18, 0.22))
+	_place_prop("BattRackS",        Vector3( 2.0, y+0.9, 24.0), Vector3(6.0, 1.8, 0.38), Color(0.14, 0.18, 0.22))
+
+func _build_props_f1_quarters(fy: float) -> void:
+	var y := fy + 0.001
+	# BunkRoom — bunk bed frames, lockers, small tables
+	for bunk_i in range(3):
+		var bx := -22.0 + float(bunk_i) * 4.5
+		_place_prop("BunkFrameA%d" % bunk_i, Vector3(bx, y+0.6, -18.5), Vector3(0.9, 1.2, 2.0), Color(0.16, 0.20, 0.22))
+		_place_prop("BunkMattA%d" % bunk_i,  Vector3(bx, y+1.2, -18.5), Vector3(0.85, 0.12, 1.95), Color(0.52, 0.46, 0.38))
+		_place_prop("BunkFrameB%d" % bunk_i, Vector3(bx, y+0.6, -13.5), Vector3(0.9, 1.2, 2.0), Color(0.16, 0.20, 0.22))
+		_place_prop("BunkMattB%d" % bunk_i,  Vector3(bx, y+1.2, -13.5), Vector3(0.85, 0.12, 1.95), Color(0.48, 0.42, 0.35))
+	_place_prop("BunkLockerRow",    Vector3(-13.5, y+0.9, -19.5), Vector3(0.42, 1.8, 4.2), Color(0.22, 0.26, 0.28))
+	_place_prop("BunkPersonalItemA",Vector3(-20.5, y+1.35, -18.5), Vector3(0.22, 0.18, 0.28), Color(0.55, 0.42, 0.28))
+	_place_prop("BunkPersonalItemB",Vector3(-16.0, y+1.35, -13.5), Vector3(0.18, 0.14, 0.22), Color(0.38, 0.32, 0.25))
+
+func _build_props_f1_medical(fy: float) -> void:
+	var y := fy + 0.001
+	# MedBay — examination beds, cabinets, lighting fixture bar
+	_place_prop("MedBedA",          Vector3(-7.5, y+0.45, -18.5), Vector3(0.9, 0.9, 2.2), Color(0.78, 0.82, 0.82))
+	_place_prop("MedBedB",          Vector3(-3.5, y+0.45, -18.5), Vector3(0.9, 0.9, 2.2), Color(0.78, 0.82, 0.82))
+	_place_prop("MedBedC",          Vector3( 0.5, y+0.45, -18.5), Vector3(0.9, 0.9, 2.2), Color(0.78, 0.82, 0.82))
+	_place_prop("MedCabinetRowA",   Vector3(-7.5, y+0.85, -13.5), Vector3(5.5, 1.7, 0.38), Color(0.22, 0.34, 0.36))
+	_place_prop("MedIVPoleA",       Vector3(-6.5, y+1.0, -18.5), Vector3(0.06, 2.0, 0.06), Color(0.72, 0.75, 0.75))
+	_place_prop("MedIVPoleB",       Vector3(-2.5, y+1.0, -18.5), Vector3(0.06, 2.0, 0.06), Color(0.72, 0.75, 0.75))
+	_place_prop("MedSinkUnit",      Vector3( 1.2, y+0.55, -13.5), Vector3(1.5, 1.1, 0.45), Color(0.68, 0.72, 0.72))
+	_place_prop("MedTrayCart",      Vector3(-4.5, y+0.55, -15.5), Vector3(0.55, 1.1, 1.0), Color(0.52, 0.56, 0.56))
+	# Pharmacy
+	_place_prop("PharmShelfA",      Vector3( 7.0, y+0.95, -11.5), Vector3(0.28, 1.9, 4.2), Color(0.22, 0.32, 0.34))
+	_place_prop("PharmShelfB",      Vector3(13.0, y+0.95, -11.5), Vector3(0.28, 1.9, 4.2), Color(0.22, 0.32, 0.34))
+	_place_prop("PharmCounter",     Vector3(10.0, y+0.55, -12.0), Vector3(5.0, 1.1, 0.55), Color(0.62, 0.66, 0.66))
+	# Surgery
+	_place_prop("OpTable",          Vector3(25.0, y+0.52, -11.5), Vector3(0.9, 1.04, 2.4), Color(0.72, 0.75, 0.72))
+	_place_prop("SurgLight",        Vector3(25.0, y+2.85, -11.5), Vector3(0.9, 0.15, 0.9), Color(0.82, 0.88, 0.88))
+	_place_prop("SurgCart",         Vector3(27.5, y+0.5, -11.5), Vector3(0.55, 1.0, 0.75), Color(0.52, 0.56, 0.56))
+	# Morgue
+	_place_prop("MorgueSlabA",      Vector3(22.0, y+0.55, -17.5), Vector3(0.7, 1.1, 2.2), Color(0.28, 0.32, 0.34))
+	_place_prop("MorgueSlabB",      Vector3(25.0, y+0.55, -17.5), Vector3(0.7, 1.1, 2.2), Color(0.28, 0.32, 0.34))
+	_place_prop("MorgueSlabC",      Vector3(28.0, y+0.55, -17.5), Vector3(0.7, 1.1, 2.2), Color(0.28, 0.32, 0.34))
+	_place_prop("MorgueDrawerBank", Vector3(21.5, y+0.9, -13.5), Vector3(0.38, 1.8, 5.5), Color(0.22, 0.26, 0.28))
+
+func _build_props_f1_living(fy: float) -> void:
+	var y := fy + 0.001
+	# MessHall — long dining tables, food service counter
+	for row_i in range(3):
+		_place_prop("DiningTable%d" % row_i, Vector3(-21.5 + float(row_i) * 4.8, y+0.44, 4.5), Vector3(1.4, 0.88, 3.5), Color(0.28, 0.24, 0.18))
+	_place_prop("FoodCounter",      Vector3(-13.5, y+0.55, 6.5), Vector3(0.5, 1.1, 4.2), Color(0.32, 0.28, 0.22))
+	_place_prop("CoffeeMachine",    Vector3(-13.5, y+1.18, 4.5), Vector3(0.38, 0.55, 0.38), Color(0.12, 0.14, 0.16))
+	_place_prop("FridgeUnit",       Vector3(-13.5, y+0.85, 2.5), Vector3(0.55, 1.7, 0.62), Color(0.55, 0.58, 0.60))
+	# RecRoom — recreational tables, display screen
+	_place_prop("RecTableA",        Vector3(-6.0, y+0.44, 4.5), Vector3(1.6, 0.88, 3.0), Color(0.22, 0.24, 0.28))
+	_place_prop("RecTableB",        Vector3(-1.5, y+0.44, 4.5), Vector3(1.6, 0.88, 3.0), Color(0.22, 0.24, 0.28))
+	_place_prop("RecScreenWall",    Vector3(-4.0, y+1.5, 7.5), Vector3(4.5, 1.8, 0.08), Color(0.06, 0.08, 0.10))
+	_place_prop("RecCouch",         Vector3(-4.0, y+0.35, 6.2), Vector3(3.5, 0.7, 0.9), Color(0.36, 0.30, 0.24))
+	# Gym
+	_place_prop("GymBenchA",        Vector3( 7.5, y+0.35, 2.5), Vector3(0.45, 0.7, 1.6), Color(0.22, 0.22, 0.20))
+	_place_prop("GymBenchB",        Vector3(12.5, y+0.35, 2.5), Vector3(0.45, 0.7, 1.6), Color(0.22, 0.22, 0.20))
+	_place_prop("GymRackA",         Vector3( 7.5, y+0.9, 8.5), Vector3(3.2, 1.8, 0.38), Color(0.24, 0.26, 0.28))
+	_place_prop("GymRackB",         Vector3(13.5, y+0.9, 8.5), Vector3(3.2, 1.8, 0.38), Color(0.24, 0.26, 0.28))
+	_place_prop("GymMachineA",      Vector3(10.0, y+0.7, 4.5), Vector3(1.2, 1.4, 1.2), Color(0.18, 0.20, 0.22))
+	# FoodStorage — crate stacks, shelves
+	_place_prop("FoodShelfA",       Vector3(22.0, y+0.95, 2.0), Vector3(0.28, 1.9, 4.5), Color(0.26, 0.22, 0.16))
+	_place_prop("FoodShelfB",       Vector3(28.0, y+0.95, 2.0), Vector3(0.28, 1.9, 4.5), Color(0.26, 0.22, 0.16))
+	_place_prop("FoodCrateStack",   Vector3(25.0, y+0.9, 6.5), Vector3(3.5, 1.8, 2.2), Color(0.28, 0.24, 0.16))
+
+func _build_props_f2_labs(fy: float) -> void:
+	var y := fy + 0.001
+	# WetLab — lab benches, specimen tanks, fume hood
+	_place_prop("WetLabBenchA",     Vector3(-21.5, y+0.55, -18.0), Vector3(5.0, 1.1, 0.7), Color(0.52, 0.56, 0.56))
+	_place_prop("WetLabBenchB",     Vector3(-21.5, y+0.55, -13.5), Vector3(5.0, 1.1, 0.7), Color(0.52, 0.56, 0.56))
+	_place_prop("SpecimenTankA",    Vector3(-20.5, y+0.75, -16.5), Vector3(0.55, 1.5, 0.55), Color(0.28, 0.52, 0.58))
+	_place_prop("SpecimenTankB",    Vector3(-19.0, y+0.75, -16.5), Vector3(0.55, 1.5, 0.55), Color(0.32, 0.48, 0.52))
+	_place_prop("FumeHood",         Vector3(-15.5, y+0.85, -18.5), Vector3(1.8, 1.7, 0.6), Color(0.62, 0.66, 0.66))
+	_place_prop("CentrifugeUnit",   Vector3(-14.5, y+0.6, -15.5), Vector3(0.72, 1.2, 0.72), Color(0.48, 0.52, 0.54))
+	# ContainmentA — containment cells with heavy frames
+	_place_prop("ContainCellA",     Vector3(-22.0, y+1.0, 2.5), Vector3(3.5, 2.0, 3.0), Color(0.16, 0.18, 0.20))
+	_place_prop("ContainCellB",     Vector3(-15.0, y+1.0, 6.5), Vector3(3.5, 2.0, 3.0), Color(0.16, 0.18, 0.20))
+	_place_prop("ContainGlassA",    Vector3(-22.0, y+1.8, 2.5), Vector3(3.2, 0.06, 2.8), Color(0.28, 0.52, 0.58))
+	_place_prop("ContainMonitor",   Vector3(-18.5, y+0.65, 7.5), Vector3(0.62, 1.3, 0.52), Color(0.08, 0.12, 0.14))
+	# SampleFreezer — tall freezer units
+	_place_prop("SFreezerA",        Vector3(-7.0, y+0.95, -18.5), Vector3(0.55, 1.9, 4.5), Color(0.55, 0.62, 0.70))
+	_place_prop("SFreezerB",        Vector3(-1.0, y+0.95, -18.5), Vector3(0.55, 1.9, 4.5), Color(0.55, 0.62, 0.70))
+	_place_prop("SFreezerCtrl",     Vector3(-4.0, y+0.65, -13.5), Vector3(3.5, 1.3, 0.48), Color(0.08, 0.12, 0.14))
+	# RoboticsBay — robotic arm frames
+	_place_prop("RoboFrameA",       Vector3( 7.5, y+1.2, 3.5), Vector3(0.9, 2.4, 0.9), Color(0.26, 0.28, 0.30))
+	_place_prop("RoboArmA",         Vector3( 8.8, y+2.0, 3.5), Vector3(2.5, 0.22, 0.22), Color(0.28, 0.30, 0.32))
+	_place_prop("RoboFrameB",       Vector3(12.5, y+1.2, 8.5), Vector3(0.9, 2.4, 0.9), Color(0.26, 0.28, 0.30))
+	_place_prop("RoboArmB",         Vector3(13.8, y+2.0, 8.5), Vector3(2.5, 0.22, 0.22), Color(0.28, 0.30, 0.32))
+	_place_prop("RoboPlatformA",    Vector3(10.0, y+0.18, 6.0), Vector3(4.5, 0.36, 4.5), Color(0.22, 0.24, 0.26))
+	# ServerAnalysis — server racks
+	_place_prop("ServerRackA",      Vector3(22.5, y+0.95, -18.5), Vector3(0.55, 1.9, 4.5), Color(0.12, 0.14, 0.16))
+	_place_prop("ServerRackB",      Vector3(24.5, y+0.95, -18.5), Vector3(0.55, 1.9, 4.5), Color(0.12, 0.14, 0.16))
+	_place_prop("ServerRackC",      Vector3(27.5, y+0.95, -18.5), Vector3(0.55, 1.9, 4.5), Color(0.12, 0.14, 0.16))
+	_place_prop("ServerConsole",    Vector3(25.0, y+0.65, -13.5), Vector3(4.5, 1.3, 0.48), Color(0.06, 0.10, 0.12))
+
+func _build_props_f3_command(fy: float) -> void:
+	var y := fy + 0.001
+	# CommandBridge — curved console array, captain's chair, overview screens
+	_place_prop("CmdConsoleArc",    Vector3(-4.0, y+0.6, -18.5), Vector3(10.0, 1.2, 0.6), Color(0.06, 0.10, 0.14))
+	_place_prop("CmdScreenL",       Vector3(-8.0, y+1.5, -18.5), Vector3(2.8, 1.4, 0.06), Color(0.04, 0.14, 0.18))
+	_place_prop("CmdScreenC",       Vector3(-4.0, y+1.5, -18.5), Vector3(3.2, 1.4, 0.06), Color(0.04, 0.14, 0.18))
+	_place_prop("CmdScreenR",       Vector3( 0.2, y+1.5, -18.5), Vector3(2.8, 1.4, 0.06), Color(0.04, 0.14, 0.18))
+	_place_prop("CaptainChair",     Vector3(-4.0, y+0.52, -15.5), Vector3(0.8, 1.04, 0.8), Color(0.12, 0.14, 0.18))
+	_place_prop("CmdPillarL",       Vector3(-9.5, y+1.5, -16.0), Vector3(0.35, 3.0, 0.35), Color(0.16, 0.20, 0.24))
+	_place_prop("CmdPillarR",       Vector3( 1.5, y+1.5, -16.0), Vector3(0.35, 3.0, 0.35), Color(0.16, 0.20, 0.24))
+	# SecurityCtrl — security stations
+	_place_prop("SecCtrlBankA",     Vector3(-7.5, y+0.6,  5.5), Vector3(5.5, 1.2, 0.52), Color(0.08, 0.12, 0.14))
+	_place_prop("SecCtrlBankB",     Vector3(-0.5, y+0.6,  5.5), Vector3(5.5, 1.2, 0.52), Color(0.08, 0.12, 0.14))
+	_place_prop("SecCtrlScreenA",   Vector3(-7.0, y+1.4,  5.5), Vector3(1.2, 0.65, 0.06), Color(0.04, 0.16, 0.12))
+	_place_prop("SecCtrlScreenB",   Vector3(-4.0, y+1.4,  5.5), Vector3(1.2, 0.65, 0.06), Color(0.04, 0.16, 0.12))
+	# Communications room
+	_place_prop("CommsArrayA",      Vector3(-21.5, y+0.7, -18.5), Vector3(5.5, 1.4, 0.55), Color(0.06, 0.10, 0.14))
+	_place_prop("CommsParabolicA",  Vector3(-16.5, y+1.5, -17.5), Vector3(1.5, 1.5, 0.14), Color(0.32, 0.36, 0.38))
+	_place_prop("CommsTransceiver", Vector3(-18.0, y+0.7, -14.5), Vector3(0.62, 1.4, 0.62), Color(0.18, 0.22, 0.24))
+	_place_prop("CommsHeadsetRow",  Vector3(-20.0, y+1.18, -18.5), Vector3(3.2, 0.22, 0.28), Color(0.24, 0.28, 0.32))
+	# ReactorControl
+	_place_prop("ReactorConsole",   Vector3(10.0, y+0.6, -18.5), Vector3(8.0, 1.2, 0.55), Color(0.06, 0.10, 0.14))
+	_place_prop("ReactorScreenA",   Vector3( 7.0, y+1.5, -18.5), Vector3(2.5, 1.4, 0.06), Color(0.12, 0.22, 0.08))
+	_place_prop("ReactorScreenB",   Vector3(10.0, y+1.5, -18.5), Vector3(2.5, 1.4, 0.06), Color(0.12, 0.22, 0.08))
+	_place_prop("ReactorScreenC",   Vector3(13.0, y+1.5, -18.5), Vector3(2.5, 1.4, 0.06), Color(0.08, 0.18, 0.06))
+	_place_prop("SafetyOverride",   Vector3(15.0, y+0.7, -15.5), Vector3(0.55, 1.4, 0.55), Color(0.68, 0.14, 0.08))
+	# ReactorCore — massive reactor housing
+	_place_prop("ReactorHousing",   Vector3(25.0, y+1.5, -17.5), Vector3(6.5, 3.0, 5.0), Color(0.22, 0.28, 0.24))
+	_place_prop("ReactorGlowCore",  Vector3(25.0, y+1.5, -17.5), Vector3(2.2, 2.2, 2.2), Color(0.18, 0.88, 0.52))
+	_place_prop("ReactorPipeL",     Vector3(19.0, y+1.5, -17.5), Vector3(0.5, 3.0, 0.5), Color(0.36, 0.32, 0.22))
+	_place_prop("ReactorPipeR",     Vector3(31.0, y+1.5, -17.5), Vector3(0.5, 3.0, 0.5), Color(0.36, 0.32, 0.22))
+	_place_prop("ReactorCoolantA",  Vector3(20.0, y+0.65, -13.5), Vector3(1.8, 1.3, 1.8), Color(0.22, 0.48, 0.62))
+	_place_prop("ReactorCoolantB",  Vector3(30.0, y+0.65, -13.5), Vector3(1.8, 1.3, 1.8), Color(0.22, 0.48, 0.62))
+	# Add a reactor OmniLight for that eerie green glow
+	_create_reactor_glow(Vector3(25.0, fy + 1.5, -17.5))
 
 func _dict_vector3(source: Dictionary, key: String, fallback: Vector3) -> Vector3:
 	var raw_value: Variant = source.get(key, fallback)
@@ -731,6 +1019,20 @@ func _create_sector_ceiling_light(sector_id: String, fixture_name: String, world
 	light.shadow_enabled = true
 	light.position = world_position
 	arena_root.add_child(light)
+	# Breakable shell — thin StaticBody3D around the bulb so bullets can shatter it
+	var shell := StaticBody3D.new()
+	shell.name = fixture_name + "Shell"
+	shell.collision_layer = 1
+	shell.collision_mask = 0
+	var cs := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = 0.28
+	cs.shape = sphere
+	shell.add_child(cs)
+	shell.set_meta("breakable_light", true)
+	shell.set_meta("light_node", light)
+	shell.position = world_position
+	arena_root.add_child(shell)
 	var lights: Array = []
 	var raw_lights: Variant = sector_lights.get(sector_id, [])
 	if raw_lights is Array:
@@ -817,6 +1119,9 @@ func _spawn_survivor(entry_reason: String) -> void:
 		objective_system.set_player(player)
 	if run_modifier_system:
 		run_modifier_system.set_player(player)
+	# Wire audio occlusion raycast to this player
+	if has_node("/root/AudioRouter"):
+		get_node("/root/AudioRouter").set_player_ref(player)
 	if survivor_count > 1:
 		_erode_existing_lost_kits()
 		_spawn_successor_only_pickups(entry_position)
@@ -936,7 +1241,7 @@ func _roll_starting_weapon_attachments() -> Array[String]:
 
 func _build_survivor_entry_scenarios() -> void:
 	entry_definitions.clear()
-	entry_definitions.append(_make_entry_definition("entry_airlock", "entry_k17_airlock", "airlock", "K-17 entry airlock", "door", Vector3(0, 0.05, -33.0), Vector3(0, 1.1, -37.8), Vector3(3.6, 2.2, 0.28), Color(0.13, 0.18, 0.24), true, 0, "door_entry_airlock"))
+	entry_definitions.append(_make_entry_definition("entry_airlock", "entry_k17_airlock", "airlock", "K-17 entry airlock", "door", Vector3(0, 0.05, -33.0), Vector3(0, 1.1, -36.1), Vector3(3.6, 2.2, 0.28), Color(0.13, 0.18, 0.24), true, 0, "door_entry_airlock"))
 	entry_definitions.append(_make_entry_definition("south_hab_pressure_door", "entry_south_hab_pressure_door", "pressure_door", "Hab pressure door", "door", Vector3(0, 0.05, 16.6), Vector3(0, 1.1, 20.62), Vector3(4.2, 2.2, 0.28), Color(0.16, 0.22, 0.24), true, 2, "door_south_hab"))
 	entry_definitions.append(_make_entry_definition("north_service_airlock_tumble", "entry_north_service_airlock", "airlock", "Emergency airlock tumble", "tumble", Vector3(0, 0.05, -16.6), Vector3(0, 1.1, -20.62), Vector3(4.2, 2.2, 0.28), Color(0.13, 0.18, 0.24), true, 1, "door_north_service"))
 	entry_definitions.append(_make_entry_definition("west_maintenance_crawl", "entry_west_maintenance_crawl", "crawlspace", "Maintenance crawlspace", "crawl", Vector3(-16.6, 0.05, 0), Vector3(-20.62, 0.62, 0), Vector3(0.18, 0.72, 2.3), Color(0.06, 0.09, 0.1), false, 1))
@@ -1644,6 +1949,16 @@ func _spawn_demo_enemies() -> void:
 		enemy.set_target(player)
 		threat_director.active_enemies.append(enemy)
 
+func _create_reactor_glow(world_position: Vector3) -> void:
+	var glow_node := OmniLight3D.new()
+	glow_node.name = "ReactorGlowLight"
+	glow_node.position = world_position
+	glow_node.light_color = Color(0.14, 0.92, 0.48)
+	glow_node.light_energy = 2.8
+	glow_node.omni_range = 14.0
+	glow_node.shadow_enabled = false
+	arena_root.add_child(glow_node)
+
 func _create_box(box_name: String, world_position: Vector3, size: Vector3, color: Color, collision: bool, surface_id: String = "metal") -> Node3D:
 	var root: Node3D
 	if collision:
@@ -1762,6 +2077,71 @@ func _on_all_objectives_completed_callout() -> void:
 func _on_extraction_available_callout(_position: Vector3) -> void:
 	if player and player.comms:
 		player.comms.announce("LZ is hot. Get to extraction now.")
+	_trigger_extraction_alarm()
+
+func _trigger_extraction_alarm() -> void:
+	# Looping danger alarm audio
+	var alarm_stream: AudioStream = SoundSynthesizer.get_stream("danger_alarm")
+	if alarm_stream and alarm_stream is AudioStreamWAV:
+		var wav := alarm_stream as AudioStreamWAV
+		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		wav.loop_begin = 0
+		wav.loop_end = max(0, int(wav.data.size() / 2) - 1)
+	if alarm_stream:
+		_alarm_loop_player = AudioStreamPlayer.new()
+		_alarm_loop_player.stream = alarm_stream
+		_alarm_loop_player.volume_db = -6.0
+		add_child(_alarm_loop_player)
+		_alarm_loop_player.play()
+	# Flood all emergency lights
+	for sector_id in emergency_lights_by_sector.keys():
+		var raw: Variant = emergency_lights_by_sector[sector_id]
+		if not raw is Array:
+			continue
+		for light_node in (raw as Array):
+			if light_node is OmniLight3D and is_instance_valid(light_node):
+				var lt: OmniLight3D = light_node as OmniLight3D
+				var tween := lt.create_tween()
+				tween.tween_property(lt, "light_energy", 1.8, 0.4)
+	# Dim normal sector lights to create oppressive red-lit atmosphere
+	for sector_id in sector_lights.keys():
+		var raw: Variant = sector_lights[sector_id]
+		if not raw is Array:
+			continue
+		for light_node in (raw as Array):
+			if light_node is OmniLight3D and is_instance_valid(light_node):
+				var lt: OmniLight3D = light_node as OmniLight3D
+				var tween := lt.create_tween()
+				tween.tween_property(lt, "light_energy", lt.light_energy * 0.28, 1.2)
+	# Shift sector light colors to threat red
+	for sector_id in sector_lights.keys():
+		var raw2: Variant = sector_lights[sector_id]
+		if not raw2 is Array:
+			continue
+		for light_node in (raw2 as Array):
+			if light_node is OmniLight3D and is_instance_valid(light_node):
+				var lt: OmniLight3D = light_node as OmniLight3D
+				var tween := lt.create_tween()
+				tween.tween_property(lt, "light_color", Color(1.0, 0.06, 0.03), 1.4)\
+					.set_trans(Tween.TRANS_SINE)
+	# Emergency lights strobe like rotating alarm beacons
+	for sector_id in emergency_lights_by_sector.keys():
+		var raw3: Variant = emergency_lights_by_sector[sector_id]
+		if not raw3 is Array:
+			continue
+		for light_node in (raw3 as Array):
+			if not (light_node is OmniLight3D) or not is_instance_valid(light_node):
+				continue
+			var lt: OmniLight3D = light_node as OmniLight3D
+			lt.light_color = Color(1.0, 0.04, 0.02)
+			var tw := lt.create_tween()
+			tw.set_loops()
+			var spd := randf_range(0.14, 0.26)
+			tw.tween_property(lt, "light_energy", 0.2, spd).set_trans(Tween.TRANS_SINE)
+			tw.tween_property(lt, "light_energy", 2.6, spd).set_trans(Tween.TRANS_SINE)
+	# Escalate threat if possible
+	if threat_director and threat_director.has_method("escalate_threat"):
+		threat_director.escalate_threat(0.8)
 
 func _on_service_node_used(_node_id: String, service_type: String, target_id: String, method_id: String, _actor: Node) -> void:
 	if service_type == "sector_power":
@@ -1963,5 +2343,575 @@ func _load_facility_snapshot() -> bool:
 
 func _on_run_ended(success: bool, reason: String) -> void:
 	run_finished = true
+	if _alarm_loop_player and is_instance_valid(_alarm_loop_player):
+		_alarm_loop_player.stop()
+		_alarm_loop_player.queue_free()
+		_alarm_loop_player = null
 	if player:
 		player.show_end_state(success, reason)
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  OUTER HULL — sealed tight-fit shell that touches all room walls
+# ──────────────────────────────────────────────────────────────────────────────
+# Station footprint (derived from room specs):
+#   X: -33.2 → +37.2   (70.4 m wide)
+#   Z: -36.2 → +25.2   (61.4 m deep)
+#   F0 north extension (airlock module): z -36.2 → -20.2, full F0 height only
+#   Main body (all 4 floors):           z -20.2 → +25.2, y -0.3 → +15.9
+
+func _build_outer_hull() -> void:
+	var hc := Color(0.13, 0.15, 0.17)   # hull panel grey
+	var rc := Color(0.09, 0.10, 0.11)   # darker recessed color
+	# Ground plate — replaces old oversized Floor box
+	_create_box("StationGround", Vector3(2.0, -0.1, -5.5), Vector3(70.6, 0.2, 61.6),
+		Color(0.082, 0.092, 0.100), true, "deck")
+	# ── F0 north extension (airlock module) ─────────────────────────────────
+	# y: -0.3 to 4.2, z: -36.2 to -20.2
+	_create_hull_wall_ns("HullNorthAirlock", -36.2, -33.2, 37.2, -0.3, 4.2, hc,
+		[{"x_center": -1.1, "width": 1.1, "height": 0.85, "y_center": 2.55},
+		 {"x_center":  1.1, "width": 1.1, "height": 0.85, "y_center": 2.55}])
+	_create_hull_wall_ew("HullWestAirlock", -33.2, -36.2, -20.2, -0.3, 4.2, hc, [])
+	_create_hull_wall_ew("HullEastAirlock",  37.2, -36.2, -20.2, -0.3, 4.2, hc, [])
+	# Flat step-roof where F0 north extension meets F1-F3 body
+	_create_box("HullExtRoof", Vector3(2.0, 4.32, -28.2), Vector3(70.6, 0.24, 16.0),
+		rc, true, "ceiling")
+	# ── Main body (all 4 floors) ─────────────────────────────────────────────
+	# y: -0.3 to 15.9, z: -20.2 to +25.2
+	# North wall — F3 command/comms windows (visible from inside command rooms)
+	_create_hull_wall_ns("HullNorthMain", -20.2, -33.2, 37.2, -0.3, 15.9, hc,
+		[{"x_center": -19.0, "width": 4.5, "height": 2.4, "y_center": 14.2},
+		 {"x_center":  -5.5, "width": 4.5, "height": 2.4, "y_center": 14.2},
+		 {"x_center":   9.0, "width": 4.5, "height": 2.4, "y_center": 14.2},
+		 {"x_center":  24.0, "width": 4.5, "height": 2.4, "y_center": 14.2}])
+	# South wall — plain (cargo/gen side)
+	_create_hull_wall_ns("HullSouth",   25.2, -33.2, 37.2, -0.3, 15.9, hc, [])
+	# West wall — maintenance viewport at F1 level
+	_create_hull_wall_ew("HullWestMain", -33.2, -20.2, 25.2, -0.3, 15.9, hc,
+		[{"z_center": -8.5, "width": 3.0, "height": 2.0, "y_center": 5.6}])
+	# East wall — reactor viewport at F1 level
+	_create_hull_wall_ew("HullEastMain",  37.2, -20.2, 25.2, -0.3, 15.9, hc,
+		[{"z_center": -8.5, "width": 3.0, "height": 2.0, "y_center": 5.6}])
+	# Station main roof
+	_create_box("HullMainRoof", Vector3(2.0, 16.05, 2.5), Vector3(70.6, 0.3, 45.6),
+		rc, true, "ceiling")
+	# Structural ribbing on outer hull — thin horizontal bands for panel-line look
+	var hull_rib_color := Color(0.10, 0.12, 0.135)
+	for floor_y in [4.22, 8.44, 12.66]:
+		_create_box("RibN%d" % int(floor_y), Vector3(2.0, floor_y, -20.2),
+			Vector3(70.6, 0.18, 0.42), hull_rib_color, false, "")
+		_create_box("RibS%d" % int(floor_y), Vector3(2.0, floor_y, 25.2),
+			Vector3(70.6, 0.18, 0.42), hull_rib_color, false, "")
+		_create_box("RibW%d" % int(floor_y), Vector3(-33.2, floor_y, 2.5),
+			Vector3(0.42, 0.18, 45.6), hull_rib_color, false, "")
+		_create_box("RibE%d" % int(floor_y), Vector3(37.2, floor_y, 2.5),
+			Vector3(0.42, 0.18, 45.6), hull_rib_color, false, "")
+	# Vertical corner pillars for structural realism
+	var pillar_color := Color(0.18, 0.20, 0.22)
+	var corner_xs := [-33.2, 37.2]
+	var corner_zs := [-36.2, -20.2, 25.2]
+	var pi_idx := 0
+	for px in corner_xs:
+		for pz in corner_zs:
+			var ph := 4.2 if pz == -36.2 or pz == -20.2 else 16.2
+			var pcy := ph * 0.5 - 0.3
+			_create_box("Pillar%d" % pi_idx, Vector3(px, pcy, pz),
+				Vector3(0.55, ph, 0.55), pillar_color, false, "")
+			pi_idx += 1
+
+# Creates a north/south facing hull wall (constant Z) with optional window cutouts.
+# windows: Array of {x_center, width, height, y_center} dicts — all at same y_center.
+func _create_hull_wall_ns(wall_name: String, wall_z: float, x_min: float, x_max: float,
+		y_min: float, y_max: float, color: Color, windows: Array[Dictionary]) -> void:
+	var full_w := x_max - x_min
+	var full_h := y_max - y_min
+	var cx := (x_min + x_max) * 0.5
+	var cy := (y_min + y_max) * 0.5
+	if windows.is_empty():
+		_create_box(wall_name, Vector3(cx, cy, wall_z), Vector3(full_w, full_h, 0.38), color, true, "bulkhead")
+		return
+	var win_y_c := float(windows[0]["y_center"])
+	var win_h := float(windows[0]["height"])
+	var band_bot := win_y_c - win_h * 0.5
+	var band_top := win_y_c + win_h * 0.5
+	# Lower solid slab
+	if band_bot > y_min + 0.05:
+		var h := band_bot - y_min
+		_create_box(wall_name + "_Lo", Vector3(cx, y_min + h * 0.5, wall_z),
+			Vector3(full_w, h, 0.38), color, true, "bulkhead")
+	# Upper solid slab
+	if band_top < y_max - 0.05:
+		var h := y_max - band_top
+		_create_box(wall_name + "_Hi", Vector3(cx, band_top + h * 0.5, wall_z),
+			Vector3(full_w, h, 0.38), color, true, "bulkhead")
+	# Window band — solid segments between cutouts
+	var sorted_wins := windows.duplicate()
+	sorted_wins.sort_custom(func(a, b): return float(a["x_center"]) < float(b["x_center"]))
+	var band_h := band_top - band_bot
+	var band_cy := (band_bot + band_top) * 0.5
+	var prev_x := x_min
+	for i in range(sorted_wins.size()):
+		var win: Dictionary = sorted_wins[i]
+		var wx := float(win["x_center"])
+		var ww := float(win["width"])
+		var left_edge := wx - ww * 0.5
+		var right_edge := wx + ww * 0.5
+		if left_edge - prev_x > 0.05:
+			var sw := left_edge - prev_x
+			_create_box(wall_name + "_B%d" % i, Vector3(prev_x + sw * 0.5, band_cy, wall_z),
+				Vector3(sw, band_h, 0.38), color, true, "bulkhead")
+		_create_window_panel(wall_name + "_W%d" % i, Vector3(wx, band_cy, wall_z),
+			Vector2(ww, band_h), true)
+		prev_x = right_edge
+	if x_max - prev_x > 0.05:
+		var sw := x_max - prev_x
+		_create_box(wall_name + "_BE", Vector3(prev_x + sw * 0.5, band_cy, wall_z),
+			Vector3(sw, band_h, 0.38), color, true, "bulkhead")
+
+# Creates an east/west facing hull wall (constant X) with optional window cutouts.
+# windows: Array of {z_center, width, height, y_center} dicts.
+func _create_hull_wall_ew(wall_name: String, wall_x: float, z_min: float, z_max: float,
+		y_min: float, y_max: float, color: Color, windows: Array[Dictionary]) -> void:
+	var full_d := z_max - z_min
+	var full_h := y_max - y_min
+	var cz := (z_min + z_max) * 0.5
+	var cy := (y_min + y_max) * 0.5
+	if windows.is_empty():
+		_create_box(wall_name, Vector3(wall_x, cy, cz), Vector3(0.38, full_h, full_d), color, true, "bulkhead")
+		return
+	var win_y_c := float(windows[0]["y_center"])
+	var win_h := float(windows[0]["height"])
+	var band_bot := win_y_c - win_h * 0.5
+	var band_top := win_y_c + win_h * 0.5
+	if band_bot > y_min + 0.05:
+		var h := band_bot - y_min
+		_create_box(wall_name + "_Lo", Vector3(wall_x, y_min + h * 0.5, cz),
+			Vector3(0.38, h, full_d), color, true, "bulkhead")
+	if band_top < y_max - 0.05:
+		var h := y_max - band_top
+		_create_box(wall_name + "_Hi", Vector3(wall_x, band_top + h * 0.5, cz),
+			Vector3(0.38, h, full_d), color, true, "bulkhead")
+	var sorted_wins := windows.duplicate()
+	sorted_wins.sort_custom(func(a, b): return float(a["z_center"]) < float(b["z_center"]))
+	var band_h := band_top - band_bot
+	var band_cy := (band_bot + band_top) * 0.5
+	var prev_z := z_min
+	for i in range(sorted_wins.size()):
+		var win: Dictionary = sorted_wins[i]
+		var wz := float(win["z_center"])
+		var ww := float(win["width"])
+		var left_edge := wz - ww * 0.5
+		var right_edge := wz + ww * 0.5
+		if left_edge - prev_z > 0.05:
+			var sd := left_edge - prev_z
+			_create_box(wall_name + "_B%d" % i, Vector3(wall_x, band_cy, prev_z + sd * 0.5),
+				Vector3(0.38, band_h, sd), color, true, "bulkhead")
+		_create_window_panel(wall_name + "_W%d" % i, Vector3(wall_x, band_cy, wz),
+			Vector2(ww, band_h), false)
+		prev_z = right_edge
+	if z_max - prev_z > 0.05:
+		var sd := z_max - prev_z
+		_create_box(wall_name + "_BE", Vector3(wall_x, band_cy, prev_z + sd * 0.5),
+			Vector3(0.38, band_h, sd), color, true, "bulkhead")
+
+# Places a framed transparent window panel at the given center position.
+# is_ns = true means the panel faces Z (north/south wall), false means X (east/west).
+func _create_window_panel(win_name: String, center: Vector3, size: Vector2, is_ns: bool) -> void:
+	var fc := Color(0.24, 0.28, 0.31)  # frame metal
+	var ft := 0.13                      # frame thickness
+	var fd := 0.38                      # frame depth (matches wall depth)
+	# Top / bottom frames
+	var top_s := Vector3(size.x + ft * 2.0, ft, fd) if is_ns else Vector3(fd, ft, size.x + ft * 2.0)
+	_create_box(win_name + "FT", center + Vector3(0, size.y * 0.5 + ft * 0.5, 0), top_s, fc, true, "bulkhead")
+	_create_box(win_name + "FB", center + Vector3(0, -(size.y * 0.5 + ft * 0.5), 0), top_s, fc, true, "bulkhead")
+	# Left / right frames
+	var side_s := Vector3(ft, size.y, fd) if is_ns else Vector3(fd, size.y, ft)
+	var off_x := (size.x * 0.5 + ft * 0.5) if is_ns else 0.0
+	var off_z := 0.0 if is_ns else (size.x * 0.5 + ft * 0.5)
+	_create_box(win_name + "FL", center + Vector3(-off_x, 0, -off_z), side_s, fc, true, "bulkhead")
+	_create_box(win_name + "FR", center + Vector3( off_x, 0,  off_z), side_s, fc, true, "bulkhead")
+	# Transparent glass
+	var glass := MeshInstance3D.new()
+	glass.name = win_name + "Glass"
+	var bm := BoxMesh.new()
+	bm.size = Vector3(size.x, size.y, 0.05) if is_ns else Vector3(0.05, size.y, size.x)
+	glass.mesh = bm
+	glass.position = center
+	var mat := StandardMaterial3D.new()
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0.48, 0.78, 0.90, 0.06)
+	mat.roughness = 0.04
+	mat.metallic = 0.0
+	mat.emission_enabled = true
+	mat.emission = Color(0.32, 0.62, 0.85)
+	mat.emission_energy_multiplier = 0.10
+	glass.material_override = mat
+	arena_root.add_child(glass)
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  MARS EXTERIOR — terrain, rocks, craters, distant mesa
+# ──────────────────────────────────────────────────────────────────────────────
+
+func _build_exterior() -> void:
+	# Vast Mars surface (low-poly, extends 600 m in every direction)
+	_create_exterior_box("MarsSurface", Vector3(2.0, -0.92, -5.5), Vector3(650.0, 0.5, 650.0),
+		Color(0.36, 0.17, 0.09))
+	# Darker dust patches around the station foundation
+	for i in range(8):
+		var angle := i * TAU / 8.0
+		var dist := randf_range(48.0, 80.0)
+		var px := 2.0 + cos(angle) * dist
+		var pz := -5.5 + sin(angle) * dist
+		var pw := randf_range(14.0, 26.0)
+		_create_exterior_box("DustPatch%d" % i, Vector3(px, -0.7, pz),
+			Vector3(pw, 0.18, pw * 0.75), Color(0.26, 0.11, 0.06))
+	# Mid-distance rocks (60–200 m out)
+	var mid_rocks: Array[Dictionary] = [
+		{"p": Vector3(-78.0, 1.8, -92.0), "s": Vector3(14.0, 4.8, 9.0)},
+		{"p": Vector3( 94.0, 2.4, -82.0), "s": Vector3( 9.0, 6.2, 11.0)},
+		{"p": Vector3(-98.0, 1.4, 52.0),  "s": Vector3(16.0, 3.8, 7.5)},
+		{"p": Vector3(112.0, 1.9, 72.0),  "s": Vector3( 8.5, 5.0, 10.0)},
+		{"p": Vector3(-122.0, 2.8, -22.0),"s": Vector3(11.5, 7.0, 9.0)},
+		{"p": Vector3(132.0, 1.4, 13.0),  "s": Vector3(15.0, 3.8, 8.5)},
+		{"p": Vector3(-68.0, 3.2, 112.0), "s": Vector3(10.5, 7.5, 12.0)},
+		{"p": Vector3( 78.0, 1.9, -132.0),"s": Vector3(12.5, 4.8, 9.0)},
+		{"p": Vector3(-142.0, 2.0, -88.0),"s": Vector3( 7.5, 5.0, 9.5)},
+		{"p": Vector3(152.0, 2.6, -52.0), "s": Vector3( 9.5, 6.0, 13.5)},
+		{"p": Vector3(-58.0, 1.7, -158.0),"s": Vector3(13.5, 3.8, 8.5)},
+		{"p": Vector3( 68.0, 2.0, 152.0), "s": Vector3(11.5, 4.8, 7.5)},
+		{"p": Vector3(-168.0, 1.4, 28.0), "s": Vector3( 8.5, 3.8, 10.0)},
+		{"p": Vector3(178.0, 1.9, -28.0), "s": Vector3(10.5, 5.0, 8.5)},
+		{"p": Vector3(  0.0, 2.0, -82.0), "s": Vector3( 9.0, 4.5, 7.5)},
+		{"p": Vector3( 45.0, 1.5, 88.0),  "s": Vector3( 7.5, 3.2, 9.0)},
+	]
+	for i in range(mid_rocks.size()):
+		var rp: Vector3 = mid_rocks[i]["p"]
+		var rs: Vector3 = mid_rocks[i]["s"]
+		var shade := sin(float(i) * 1.618) * 0.04
+		_create_exterior_box("MidRock%d" % i, rp, rs, Color(0.30 + shade, 0.13 + shade * 0.6, 0.08))
+	# Near rocks (45–70 m) — visible from windows
+	var near_rocks: Array[Dictionary] = [
+		{"p": Vector3(-52.0, 0.8, -52.0), "s": Vector3(5.0, 2.2, 4.0)},
+		{"p": Vector3( 63.0, 0.7, -46.0), "s": Vector3(6.0, 1.8, 5.0)},
+		{"p": Vector3(-60.0, 0.9, 36.0),  "s": Vector3(4.5, 2.4, 6.0)},
+		{"p": Vector3( 70.0, 0.8, 30.0),  "s": Vector3(7.0, 2.0, 4.5)},
+		{"p": Vector3(-50.0, 1.0, -72.0), "s": Vector3(4.0, 2.8, 5.0)},
+		{"p": Vector3( 56.0, 0.9, 60.0),  "s": Vector3(5.5, 1.7, 4.5)},
+		{"p": Vector3(-76.0, 0.8, 10.0),  "s": Vector3(6.0, 2.2, 5.5)},
+		{"p": Vector3( 86.0, 0.9, -10.0), "s": Vector3(5.5, 2.4, 6.0)},
+		{"p": Vector3(  2.0, 1.2, -62.0), "s": Vector3(7.0, 2.7, 5.5)},
+		{"p": Vector3(  2.0, 0.9, 48.0),  "s": Vector3(6.5, 1.9, 7.0)},
+	]
+	for i in range(near_rocks.size()):
+		var rp: Vector3 = near_rocks[i]["p"]
+		var rs: Vector3 = near_rocks[i]["s"]
+		_create_exterior_box("NearRock%d" % i, rp, rs, Color(0.34, 0.15, 0.08))
+	# Distant ridges on the horizon (150–300 m out)
+	var ridges: Array[Dictionary] = [
+		{"p": Vector3(-85.0,  6.0, -255.0), "s": Vector3(185.0, 14.0, 58.0)},
+		{"p": Vector3(125.0,  9.0, -275.0), "s": Vector3(145.0, 20.0, 52.0)},
+		{"p": Vector3(-225.0, 13.0,  -78.0),"s": Vector3( 42.0, 30.0, 115.0)},
+		{"p": Vector3( 262.0, 10.0,  -58.0),"s": Vector3( 38.0, 22.0, 135.0)},
+		{"p": Vector3( -85.0,  8.0,  222.0),"s": Vector3(205.0, 17.0, 48.0)},
+		{"p": Vector3( 142.0,  5.5,  242.0),"s": Vector3(165.0, 13.0, 42.0)},
+		{"p": Vector3(-282.0,  6.5,   82.0),"s": Vector3( 32.0, 15.0, 165.0)},
+		{"p": Vector3( 292.0,  9.0,   42.0),"s": Vector3( 36.0, 20.0, 145.0)},
+	]
+	for i in range(ridges.size()):
+		var rp: Vector3 = ridges[i]["p"]
+		var rs: Vector3 = ridges[i]["s"]
+		var dark := float(i) * 0.008
+		_create_exterior_box("Ridge%d" % i, rp, rs, Color(0.26 - dark, 0.11 - dark * 0.5, 0.06))
+	# Crater depressions — flat dark cylinders
+	var craters: Array[Dictionary] = [
+		{"p": Vector3(-162.0, -0.84, -142.0), "r": 28.0},
+		{"p": Vector3( 188.0, -0.84,  102.0), "r": 22.0},
+		{"p": Vector3(-108.0, -0.84,  165.0), "r": 18.0},
+		{"p": Vector3( 150.0, -0.84, -188.0), "r": 32.0},
+		{"p": Vector3(-208.0, -0.84,   48.0), "r": 25.0},
+		{"p": Vector3(  98.0, -0.84, -212.0), "r": 20.0},
+	]
+	for i in range(craters.size()):
+		var cpos: Vector3 = craters[i]["p"]
+		var crad: float = craters[i]["r"]
+		var cyl := MeshInstance3D.new()
+		cyl.name = "Crater%d" % i
+		var cmesh := CylinderMesh.new()
+		cmesh.top_radius = crad
+		cmesh.bottom_radius = crad * 0.72
+		cmesh.height = 0.48
+		cmesh.radial_segments = 18
+		cyl.mesh = cmesh
+		var cmat := StandardMaterial3D.new()
+		cmat.albedo_color = Color(0.15, 0.065, 0.032)
+		cmat.roughness = 1.0
+		cyl.material_override = cmat
+		cyl.position = cpos
+		arena_root.add_child(cyl)
+	# Dramatic mesa landmark — visible from north-facing windows
+	_create_exterior_box("MesaA",    Vector3(-305.0, 36.0, -198.0), Vector3(82.0, 76.0, 62.0), Color(0.30, 0.13, 0.07))
+	_create_exterior_box("MesaATop", Vector3(-305.0, 76.5, -198.0), Vector3(58.0,  9.0, 46.0), Color(0.22, 0.09, 0.05))
+	_create_exterior_box("MesaB",    Vector3( 325.0, 19.0, -182.0), Vector3(52.0, 42.0, 68.0), Color(0.27, 0.11, 0.06))
+	_create_exterior_box("MesaBTop", Vector3( 325.0, 41.5, -182.0), Vector3(38.0,  6.0, 52.0), Color(0.20, 0.08, 0.04))
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  WALL DETAIL PASS — panel-line strips, trims, ceiling lights, emissive screens
+# ──────────────────────────────────────────────────────────────────────────────
+
+func _build_wall_detail_pass() -> void:
+	var trim_c := Color(0.20, 0.23, 0.26)
+	var base_c := Color(0.08, 0.10, 0.12)
+	var ceil_c := Color(0.75, 0.96, 1.00)
+	for spec in _get_station_room_specs():
+		var pos: Vector3 = spec["position"]
+		var sz: Vector2 = spec["size"]
+		var cx := pos.x;  var fy := pos.y;  var cz := pos.z
+		var sx := sz.x;   var sd := sz.y   # sd = depth (z extent)
+		var rn: String = spec["name"]
+		# Floor baseboard — dark metallic border at floor level
+		_add_detail_strip(rn+"BN", Vector3(cx, fy+0.06, cz-sd*0.5+0.04), Vector3(sx-0.06, 0.12, 0.06), base_c)
+		_add_detail_strip(rn+"BS", Vector3(cx, fy+0.06, cz+sd*0.5-0.04), Vector3(sx-0.06, 0.12, 0.06), base_c)
+		_add_detail_strip(rn+"BW", Vector3(cx-sx*0.5+0.04, fy+0.06, cz), Vector3(0.06, 0.12, sd-0.06), base_c)
+		_add_detail_strip(rn+"BE", Vector3(cx+sx*0.5-0.04, fy+0.06, cz), Vector3(0.06, 0.12, sd-0.06), base_c)
+		# Ceiling cornice — lighter trim at top of walls
+		_add_detail_strip(rn+"CN", Vector3(cx, fy+2.90, cz-sd*0.5+0.04), Vector3(sx-0.06, 0.09, 0.06), trim_c)
+		_add_detail_strip(rn+"CS", Vector3(cx, fy+2.90, cz+sd*0.5-0.04), Vector3(sx-0.06, 0.09, 0.06), trim_c)
+		_add_detail_strip(rn+"CW", Vector3(cx-sx*0.5+0.04, fy+2.90, cz), Vector3(0.06, 0.09, sd-0.06), trim_c)
+		_add_detail_strip(rn+"CE", Vector3(cx+sx*0.5-0.04, fy+2.90, cz), Vector3(0.06, 0.09, sd-0.06), trim_c)
+		# Panel division line at chair-rail height (1.35 m)
+		_add_detail_strip(rn+"PN", Vector3(cx, fy+1.35, cz-sd*0.5+0.02), Vector3(sx, 0.05, 0.04), trim_c.lightened(0.1))
+		_add_detail_strip(rn+"PS", Vector3(cx, fy+1.35, cz+sd*0.5-0.02), Vector3(sx, 0.05, 0.04), trim_c.lightened(0.1))
+		_add_detail_strip(rn+"PW", Vector3(cx-sx*0.5+0.02, fy+1.35, cz), Vector3(0.04, 0.05, sd), trim_c.lightened(0.1))
+		_add_detail_strip(rn+"PE", Vector3(cx+sx*0.5-0.02, fy+1.35, cz), Vector3(0.04, 0.05, sd), trim_c.lightened(0.1))
+		# Ceiling fluorescent strip running along longer axis
+		var is_wide := sx >= sd
+		var strip_l := (sx - 0.6) if is_wide else (sd - 0.6)
+		var strip_s := Vector3(strip_l, 0.06, 0.14) if is_wide else Vector3(0.14, 0.06, strip_l)
+		_add_emissive_strip(rn+"CL", Vector3(cx, fy+2.96, cz), strip_s, ceil_c, 1.15)
+	# Key room emissive screen panels (placed 0.12 m off the wall face)
+	# F3 north-face command windows — screens inside the rooms facing the window
+	_add_screen_panel("ScrComm",  Vector3(-19.0, 13.85, -19.7), Vector2(3.2, 1.7), false, Color(0.12, 0.88, 0.62))
+	_add_screen_panel("ScrCmd",   Vector3( -4.5, 13.85, -19.7), Vector2(3.2, 1.7), false, Color(0.12, 0.62, 0.98))
+	_add_screen_panel("ScrReact", Vector3(  9.5, 13.85, -19.7), Vector2(3.2, 1.7), false, Color(0.98, 0.52, 0.12))
+	_add_screen_panel("ScrRCore", Vector3( 24.0, 13.85, -19.7), Vector2(3.2, 1.7), false, Color(0.98, 0.22, 0.12))
+	# F1 MedBay terminal and Security Check monitor
+	_add_screen_panel("ScrMed",   Vector3( -4.0,  5.20, -19.7), Vector2(2.6, 1.3), false, Color(0.22, 0.96, 0.62))
+	_add_screen_panel("ScrSec",   Vector3(  0.0,  1.40, -25.0), Vector2(2.2, 1.1), false, Color(0.95, 0.82, 0.12))
+
+func _add_detail_strip(strip_name: String, pos: Vector3, size: Vector3, color: Color) -> void:
+	var mi := MeshInstance3D.new()
+	mi.name = strip_name
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.52
+	mat.metallic = 0.55
+	mi.material_override = mat
+	mi.position = pos
+	arena_root.add_child(mi)
+
+func _add_emissive_strip(strip_name: String, pos: Vector3, size: Vector3, color: Color, energy: float) -> void:
+	var mi := MeshInstance3D.new()
+	mi.name = strip_name
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color.darkened(0.55)
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = energy
+	mat.roughness = 1.0
+	mi.material_override = mat
+	mi.position = pos
+	arena_root.add_child(mi)
+
+func _add_screen_panel(panel_name: String, pos: Vector3, size: Vector2, is_ew: bool, color: Color) -> void:
+	# Bezel frame
+	var bezel := MeshInstance3D.new()
+	bezel.name = panel_name + "Bez"
+	var bbm := BoxMesh.new()
+	bbm.size = Vector3(size.x + 0.12, size.y + 0.12, 0.05) if not is_ew else Vector3(0.05, size.y + 0.12, size.x + 0.12)
+	bezel.mesh = bbm
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.055, 0.065, 0.075)
+	bmat.roughness = 0.28
+	bmat.metallic = 0.82
+	bezel.material_override = bmat
+	bezel.position = pos
+	arena_root.add_child(bezel)
+	# Emissive screen surface
+	var screen := MeshInstance3D.new()
+	screen.name = panel_name + "Scr"
+	var sm := BoxMesh.new()
+	sm.size = Vector3(size.x, size.y, 0.03) if not is_ew else Vector3(0.03, size.y, size.x)
+	screen.mesh = sm
+	var smat := StandardMaterial3D.new()
+	smat.albedo_color = color.darkened(0.65)
+	smat.emission_enabled = true
+	smat.emission = color
+	smat.emission_energy_multiplier = 0.60
+	smat.roughness = 1.0
+	screen.material_override = smat
+	screen.position = pos + (Vector3(0, 0, 0.03) if not is_ew else Vector3(0.03, 0, 0))
+	arena_root.add_child(screen)
+
+# Lightweight exterior mesh — no collision needed for distant scenery.
+func _create_exterior_box(box_name: String, world_position: Vector3, size: Vector3, color: Color) -> void:
+	var mi := MeshInstance3D.new()
+	mi.name = box_name
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.92
+	mat.metallic = 0.0
+	mi.material_override = mat
+	mi.position = world_position
+	arena_root.add_child(mi)
+
+# ────────────────────────────────────────────────────────────────
+# STEAM VENTS — atmospheric pipe-joint particle emitters
+# ────────────────────────────────────────────────────────────────
+func _build_steam_vents() -> void:
+	var positions: Array[Vector3] = [
+		Vector3(-8.0, 2.5, -4.0),
+		Vector3(8.0, 2.5, -4.0),
+		Vector3(0.0, 2.5, -18.0),
+		Vector3(-12.0, 0.5, 8.0),
+		Vector3(12.0, 0.5, 8.0),
+		Vector3(-6.0, 2.5, 20.0),
+		Vector3(6.0, 2.5, 20.0),
+		Vector3(0.0, 5.5, -8.0),
+		Vector3(-4.0, 0.5, 12.0),
+		Vector3(4.0, 0.5, 12.0),
+		Vector3(-10.0, 2.5, -12.0),
+		Vector3(10.0, 2.5, -12.0),
+	]
+	for i in range(positions.size()):
+		var pos := positions[i]
+		# Small pipe stub visible marker
+		var stub := MeshInstance3D.new()
+		stub.name = "SteamPipeStub%d" % i
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.055
+		cyl.bottom_radius = 0.055
+		cyl.height = 0.18
+		stub.mesh = cyl
+		var smat := StandardMaterial3D.new()
+		smat.albedo_color = Color(0.28, 0.30, 0.32)
+		smat.metallic = 0.7
+		smat.roughness = 0.4
+		stub.material_override = smat
+		stub.position = pos
+		arena_root.add_child(stub)
+		# Steam particle emitter
+		var particles := GPUParticles3D.new()
+		particles.name = "SteamVent%d" % i
+		var pm := ParticleProcessMaterial.new()
+		pm.direction = Vector3(0.0, 1.0, 0.0)
+		pm.spread = 18.0
+		pm.initial_velocity_min = 0.8
+		pm.initial_velocity_max = 2.2
+		pm.gravity = Vector3(0.0, 0.2, 0.0)
+		pm.color = Color(0.85, 0.90, 0.95, 0.35)
+		pm.scale_min = 0.08
+		pm.scale_max = 0.18
+		particles.process_material = pm
+		var quad := QuadMesh.new()
+		quad.size = Vector2(0.14, 0.14)
+		particles.draw_pass_1 = quad
+		particles.amount = 12
+		particles.lifetime = 1.8
+		particles.explosiveness = 0.0
+		particles.one_shot = false
+		particles.position = pos + Vector3(0.0, 0.12, 0.0)
+		arena_root.add_child(particles)
+		particles.emitting = true
+		# Wet zone Area3D — footsteps use footstep_wet nearby
+		var wet_area := Area3D.new()
+		wet_area.name = "WetZone%d" % i
+		wet_area.collision_layer = 0
+		wet_area.collision_mask = 1  # detect player body
+		var wa_cs := CollisionShape3D.new()
+		var wa_box := BoxShape3D.new()
+		wa_box.size = Vector3(3.0, 2.0, 3.0)
+		wa_cs.shape = wa_box
+		wet_area.add_child(wa_cs)
+		wet_area.position = pos
+		wet_area.add_to_group("wet_zone")
+		arena_root.add_child(wet_area)
+
+# ────────────────────────────────────────────────────────────────
+# REVERB ZONES — per-room acoustic profile via Area3D
+# ────────────────────────────────────────────────────────────────
+func _build_reverb_zones() -> void:
+	# [center, half_extents, room_size, damping, wet]
+	var zones: Array[Dictionary] = [
+		{"center": Vector3(0.0, 2.0, 14.0),   "ext": Vector3(10.0, 4.0, 8.0),  "rs": 0.92, "dam": 0.35, "wet": 0.52},  # Cargo
+		{"center": Vector3(12.0, 2.0, 0.0),   "ext": Vector3(6.0, 3.0, 6.0),   "rs": 0.65, "dam": 0.55, "wet": 0.35},  # Control
+		{"center": Vector3(-12.0, 2.0, -8.0), "ext": Vector3(6.0, 3.0, 5.0),   "rs": 0.28, "dam": 0.88, "wet": 0.12},  # Med bay
+		{"center": Vector3(8.0, 2.0, -10.0),  "ext": Vector3(7.0, 3.0, 6.0),   "rs": 0.78, "dam": 0.42, "wet": 0.44},  # Industrial
+		{"center": Vector3(-8.0, 2.0, -10.0), "ext": Vector3(5.0, 3.0, 5.0),   "rs": 0.18, "dam": 0.95, "wet": 0.08},  # Hab
+		{"center": Vector3(0.0, 2.0, -4.0),   "ext": Vector3(7.0, 3.0, 6.0),   "rs": 0.48, "dam": 0.68, "wet": 0.25},  # Hub
+		{"center": Vector3(0.0, 2.0, 22.0),   "ext": Vector3(5.0, 3.0, 7.0),   "rs": 0.82, "dam": 0.30, "wet": 0.48},  # Maintenance
+	]
+	for zd in zones:
+		var area := Area3D.new()
+		area.name = "ReverbZone_%s" % str(zd["center"])
+		area.collision_layer = 0
+		area.collision_mask = 1  # detect player (layer 1)
+		var cs := CollisionShape3D.new()
+		var box := BoxShape3D.new()
+		box.size = Vector3(zd["ext"]) * 2.0
+		cs.shape = box
+		area.add_child(cs)
+		area.position = Vector3(zd["center"])
+		area.monitorable = false
+		arena_root.add_child(area)
+		var rs: float = float(zd["rs"])
+		var dam: float = float(zd["dam"])
+		var wet: float = float(zd["wet"])
+		area.body_entered.connect(func(body: Node3D) -> void:
+			if body is PlayerControllerFPS:
+				AudioRouter.set_room_reverb(rs, dam, wet)
+		)
+		area.body_exited.connect(func(body: Node3D) -> void:
+			if body is PlayerControllerFPS:
+				AudioRouter.set_room_reverb(0.3, 0.8, 0.0)
+		)
+
+func _spawn_death_memorials() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load("user://death_records.cfg") != OK:
+		return
+	var raw: Variant = cfg.get_value("deaths", "positions", [])
+	if not raw is Array:
+		return
+	for record in (raw as Array):
+		if not record is Dictionary:
+			continue
+		var pos := Vector3(
+			float((record as Dictionary).get("x", 0.0)),
+			float((record as Dictionary).get("y", 0.0)),
+			float((record as Dictionary).get("z", 0.0))
+		)
+		var mesh_inst := MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.55
+		cyl.bottom_radius = 0.55
+		cyl.height = 0.003
+		cyl.radial_segments = 24
+		mesh_inst.mesh = cyl
+		var mat := StandardMaterial3D.new()
+		mat.albedo_color = Color(0.25, 0.01, 0.01)
+		mat.roughness = 0.95
+		mat.metallic = 0.0
+		mat.emission_enabled = true
+		mat.emission = Color(0.15, 0.005, 0.005)
+		mat.emission_energy_multiplier = 0.22
+		mesh_inst.material_override = mat
+		mesh_inst.global_position = pos + Vector3.UP * 0.04
+		arena_root.add_child(mesh_inst)

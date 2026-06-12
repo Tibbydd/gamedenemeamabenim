@@ -10,6 +10,7 @@ var weapon_family: String = ""
 var is_reloading: bool = false
 
 var _font: Font
+var _disp_ammo: float = 0.0  # animated toward ammo_current for rolling display
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
@@ -31,6 +32,12 @@ func refresh(wname: String, cur: int, res: int, mag_sz: int, cond: float, family
 	is_reloading = reloading
 	queue_redraw()
 
+func _process(delta: float) -> void:
+	if weapon_name.is_empty():
+		return
+	_disp_ammo = move_toward(_disp_ammo, float(ammo_current), delta * 120.0)
+	queue_redraw()
+
 func _draw() -> void:
 	if weapon_name.is_empty():
 		return
@@ -50,14 +57,20 @@ func _draw() -> void:
 	# Magazine icon
 	var fill_ratio: float = 1.0
 	if not is_reloading and magazine_size > 0:
-		fill_ratio = clampf(float(ammo_current) / float(magazine_size), 0.0, 1.0)
+		fill_ratio = clampf(_disp_ammo / float(magazine_size), 0.0, 1.0)
 	_draw_magazine_icon(Vector2(lx + 8.0, 22.0), fill_ratio)
 
-	# Reserve as mag count — "×3"
+	# Rolling current ammo count — large digit, ticks down each shot
+	var disp_int := int(round(_disp_ammo))
+	var cur_str: String = "RELOADING" if is_reloading else str(disp_int)
+	draw_string(_font, Vector2(lx + 28.0, 42.0), cur_str,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 18, teal)
+
+	# Reserve as mag count
 	var mag_count: int = int(ammo_reserve) / int(magazine_size) if magazine_size > 0 else 0
-	var res_str: String = "RELOADING" if is_reloading else "x%d" % mag_count
-	draw_string(_font, Vector2(lx + 32.0, 52.0), res_str,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, dim)
+	var res_str: String = "x%d" % mag_count if not is_reloading else ""
+	draw_string(_font, Vector2(lx + 32.0, 56.0), res_str,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, dim)
 
 	# Condition bar
 	var bar_y: float = 64.0

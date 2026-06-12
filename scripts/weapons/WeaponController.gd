@@ -25,6 +25,9 @@ var weapon_condition: float = 1.0
 var thermal_heat: float = 0.0
 var chamber_loaded: bool = true
 var thermal_heat_ceiling: float = 120.0
+var shot_heat: float = 0.0           # panic inaccuracy — first shot accurate, auto-fire sprays
+var _condition_spark_timer: float = 0.0
+var _barrel_heat_light: OmniLight3D = null
 
 func setup(new_owner: CharacterBody3D, new_camera: Camera3D, new_muzzle: Node3D, health: PlayerHealthBodyParts, mental_state: MentalStateManager) -> void:
 	owner_body = new_owner
@@ -56,6 +59,9 @@ func equip_weapon(weapon_id: String) -> void:
 func _process(delta: float) -> void:
 	cooldown = max(0.0, cooldown - delta)
 	thermal_heat = max(0.0, thermal_heat - delta * 18.0)
+	shot_heat = max(0.0, shot_heat - delta * 0.55)
+	_update_condition_sparks(delta)
+	_update_barrel_heat_glow()
 	if is_reloading:
 		reload_timer -= delta
 		if reload_timer <= 0.0:
@@ -103,6 +109,9 @@ func try_fire() -> bool:
 		_fire_flame_stream()
 	else:
 		_fire_projectile()
+		_eject_casing()
+	# Panic heat — accumulates during sustained fire, first shot is always at base spread
+	shot_heat = min(shot_heat + 0.18, 1.0)
 	var recoil_pitch: float = _get_effective_recoil_pitch()
 	recoil_requested.emit(recoil_pitch, _get_effective_recoil_yaw(recoil_pitch), _get_effective_rearward_kick(recoil_pitch))
 	ammo_changed.emit(current_ammo, reserve_ammo)
@@ -513,4 +522,146 @@ func _get_effective_spread_degrees() -> float:
 		spread *= 0.86
 	if has_attachment("compact_suppressor"):
 		spread *= 1.05
+	# Panic inaccuracy: first shot is accurate; sustained fire sprays
+	if shot_heat > 0.05:
+		spread += shot_heat * 2.2
 	return spread
+
+func _eject_casing() -> void:
+	if not muzzle or not owner_body:
+		return
+	var scene := get_tree().current_scene
+	if not scene:
+		return
+	var casing := RigidBody3D.new()
+	casing.name = "BrassCasing"
+	casing.contact_monitor = true
+	casing.max_contacts_reported = 1
+	var mesh := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.004
+	cyl.bottom_radius = 0.004
+	cyl.height = 0.012
+	mesh.mesh = cyl
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.82, 0.65, 0.18)
+	mat.metallic = 0.9
+	mat.roughness = 0.2
+	mesh.material_override = mat
+	casing.add_child(mesh)
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = 0.004
+	shape.height = 0.012
+	col.shape = shape
+	casing.add_child(col)
+	scene.add_child(casing)
+	casing.global_position = muzzle.global_position + muzzle.global_transform.basis.x * 0.06
+	casing.linear_velocity = (muzzle.global_transform.basis.x * 2.8
+		+ Vector3.UP * 1.4
+		+ Vector3(randf_range(-0.3, 0.3), 0.0, randf_range(-0.3, 0.3)))
+	casing.angular_velocity = Vector3(randf_range(-8.0, 8.0), randf_range(-8.0, 8.0), randf_range(-8.0, 8.0))
+	# Metallic clink on first floor contact, then stop collecting contacts
+	casing.body_entered.connect(func(_b: Node) -> void:
+		AudioRouter.play_3d("footstep_metal", casing.global_position,
+			1.6 + randf_range(-0.1, 0.2))
+		casing.set_collision_layer_value(1, false)
+	)
+	get_tree().create_timer(30.0).timeout.connect(casing.queue_free)
+
+func _update_barrel_heat_glow() -> void:
+	if not muzzle:
+		return
+	if shot_heat > 0.08:
+		if not _barrel_heat_light or not is_instance_valid(_barrel_heat_light):
+			_barrel_heat_light = OmniLight3D.new()
+			_barrel_heat_light.light_color = Color(1.0, 0.38, 0.06)
+			_barrel_heat_light.omni_range = 1.8
+			_barrel_heat_light.shadow_enabled = false
+			muzzle.add_child(_barrel_heat_light)
+		_barrel_heat_light.light_energy = shot_heat * 2.4
+	elif _barrel_heat_light and is_instance_valid(_barrel_heat_light):
+		_barrel_heat_light.queue_free()
+		_barrel_heat_light = null
+
+func panic_reload() -> bool:
+	if not data or is_reloading or reserve_ammo <= 0:
+		return false
+	if owner_body and owner_body.has_method("can_operate_weapon") and not owner_body.can_operate_weapon():
+		return false
+	if current_ammo > 0:
+		_spawn_stripped_magazine()
+		current_ammo = 0
+		chamber_loaded = false
+	is_reloading = true
+	var handling: float = 1.0
+	if owner_health:
+		handling = owner_health.get_handling_modifier()
+	reload_timer = (_get_effective_reload_time() * 0.68) / max(0.35, handling)
+	GameEvents.emit_player_noise(owner_body.global_position, 28.0)
+	GameEvents.request_sound("reload_mag_out", owner_body.global_position, 1.1)
+	ammo_changed.emit(current_ammo, reserve_ammo)
+	return true
+
+func _spawn_stripped_magazine() -> void:
+	if not muzzle:
+		return
+	var scene := get_tree().current_scene
+	if not scene:
+		return
+	var mag := RigidBody3D.new()
+	mag.name = "StrippedMag"
+	var mesh := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.018
+	cyl.bottom_radius = 0.018
+	cyl.height = 0.085
+	mesh.mesh = cyl
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.22, 0.22, 0.24)
+	mat.metallic = 0.7
+	mat.roughness = 0.4
+	mesh.material_override = mat
+	mag.add_child(mesh)
+	var col := CollisionShape3D.new()
+	var shape := CylinderShape3D.new()
+	shape.radius = 0.018
+	shape.height = 0.085
+	col.shape = shape
+	mag.add_child(col)
+	mag.contact_monitor = true
+	mag.max_contacts_reported = 1
+	scene.add_child(mag)
+	mag.global_position = muzzle.global_position + Vector3(0.0, -0.15, 0.0)
+	mag.linear_velocity = Vector3(randf_range(-0.5, 0.5), -2.2, randf_range(-0.5, 0.5))
+	mag.angular_velocity = Vector3(randf_range(-6.0, 6.0), randf_range(-6.0, 6.0), randf_range(-6.0, 6.0))
+	mag.body_entered.connect(func(_b: Node) -> void:
+		AudioRouter.play_3d("footstep_metal", mag.global_position, 0.75)
+		mag.set_collision_layer_value(1, false)
+	)
+	get_tree().create_timer(20.0).timeout.connect(mag.queue_free)
+
+func _update_condition_sparks(delta: float) -> void:
+	if not muzzle or weapon_condition >= 0.25:
+		return
+	_condition_spark_timer -= delta
+	if _condition_spark_timer > 0.0:
+		return
+	_condition_spark_timer = randf_range(3.0, 8.0) * weapon_condition * 4.0
+	# Brief OmniLight flicker at muzzle position
+	if owner_body:
+		var spark_light := OmniLight3D.new()
+		spark_light.light_color = Color(1.0, 0.62, 0.12)
+		spark_light.omni_range = 1.2
+		spark_light.light_energy = 1.4
+		muzzle.add_child(spark_light)
+		# Fade and remove
+		var tween := spark_light.create_tween()
+		tween.tween_property(spark_light, "light_energy", 0.0, 0.06)
+		tween.tween_callback(spark_light.queue_free)
+		GameEvents.request_sound("footstep_metal", muzzle.global_position, 1.4)
+	# At near-failure condition: jitter the weapon
+	if weapon_condition < 0.10 and owner_body and owner_body.has_signal("weapon_recoil_requested"):
+		var jitter_pitch := randf_range(-0.04, 0.04)
+		var jitter_yaw := randf_range(-0.04, 0.04)
+		recoil_requested.emit(jitter_pitch, jitter_yaw, 0.0)

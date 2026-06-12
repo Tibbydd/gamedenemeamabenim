@@ -68,6 +68,8 @@ var hit_bob_timer: float = 0.0
 var hit_bob_duration: float = 0.0
 var hit_bob_strength: float = 0.0
 var hit_bob_side: float = 0.0
+var head_bob_t: float = 0.0
+var move_bob_offset: Vector3 = Vector3.ZERO
 var shove_cooldown: float = 0.0
 var shove_cooldown_time: float = 0.85
 var intro_lock_timer: float = 0.0
@@ -98,6 +100,53 @@ var run_objectives_done: int = 0
 var run_time_elapsed: float = 0.0
 var debrief_screen: MissionDebriefScreen
 var ambient_hum_player: AudioStreamPlayer
+
+# --- Game feel: horror atmosphere ---
+var _fear_level: float = 0.0
+var _breath_timer: float = 0.0
+var _heartbeat_pulse: float = 0.0
+var _limp_t: float = 0.0
+var flashlight_battery: float = 100.0
+var _fl_flicker_timer: float = 0.0
+
+# --- Game feel: camera/shake ---
+var shake_noise: Vector3 = Vector3.ZERO
+var shake_z_tilt: float = 0.0
+var _recoil_tween: Tween = null
+
+# --- Game feel: locomotion ---
+var coyote_timer: float = 0.0
+var jump_buffer_timer: float = 0.0
+var _was_on_floor: bool = true
+var _fall_peak_y: float = 0.0
+var _landing_speed_penalty: float = 0.0
+var _floor_wetness: float = 0.0
+
+# --- Game feel: weapon sway ---
+var _prev_yaw: float = 0.0
+var _prev_pitch: float = 0.0
+var _weapon_sway: Vector3 = Vector3.ZERO
+
+# --- Game feel: extraction ---
+var _extraction_available: bool = false
+var _beacon_pulse_timer: float = 0.0
+
+# --- Game feel: Sprint 3 ---
+var _adrenaline_phase: int = 0
+var _adrenaline_timer: float = 0.0
+var _prev_nearest_enemy: float = 999.0
+var _lissajous_t: float = 0.0
+var _wristband_mesh: MeshInstance3D = null
+var _wristband_mat: StandardMaterial3D = null
+var _last_reload_press_time: float = -99.0
+
+# --- Game feel: proximity indicator ---
+var _proximity_rects: Array[ColorRect] = []
+
+var damage_flash_timer: float = 0.0
+var damage_flash_max: float = 0.0
+var damage_flash_rect: ColorRect
+var low_health_pulse_timer: float = 0.0
 
 var jump_velocity: float = 5.4
 var wants_jump_this_frame: bool = false
@@ -139,6 +188,10 @@ func _ready() -> void:
 	_build_hud()
 	_build_ambient_hum_player()
 	_connect_run_accounting_events()
+	GameEvents.extraction_available.connect(func(_pos: Vector3) -> void:
+		_extraction_available = true
+		_beacon_pulse_timer = 0.0
+	)
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func _build_collision() -> void:
@@ -216,6 +269,7 @@ func _build_weapon_visual() -> void:
 	muzzle_marker.position = Vector3(0.0, 0.09, -0.95)
 	weapon_pivot.add_child(muzzle_marker)
 	_build_glasses_lens()
+	_build_wristband_vitals()
 
 func _refresh_weapon_view_model() -> void:
 	if not weapon_pivot or not weapon or not weapon.data:
@@ -379,6 +433,14 @@ func _build_hud() -> void:
 	corruption_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud_layer.add_child(corruption_overlay)
 
+	# Full-screen damage flash — red vignette that fades after taking a hit
+	damage_flash_rect = ColorRect.new()
+	damage_flash_rect.name = "DamageFlash"
+	damage_flash_rect.color = Color(0.72, 0.0, 0.02, 0.0)
+	damage_flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	damage_flash_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	hud_layer.add_child(damage_flash_rect)
+
 	# Glasses lens effect (vignette + corner brackets + scanline)
 	glasses_overlay = GlassesOverlay.new()
 	glasses_overlay.name = "GlassesOverlay"
@@ -534,6 +596,26 @@ func _build_hud() -> void:
 	end_label.offset_bottom = 120.0
 	hud_layer.add_child(end_label)
 
+	# Proximity danger indicator — 4 screen-edge strips that pulse red when
+	# an enemy is very close but not in FOV (threat compass)
+	var prox_anchors := [
+		[Control.PRESET_TOP_WIDE, 0.0, 0.0, 0.0, 10.0],
+		[Control.PRESET_BOTTOM_WIDE, 0.0, -10.0, 0.0, 0.0],
+		[Control.PRESET_LEFT_WIDE, 0.0, 0.0, 10.0, 0.0],
+		[Control.PRESET_RIGHT_WIDE, -10.0, 0.0, 0.0, 0.0],
+	]
+	for cfg in prox_anchors:
+		var r := ColorRect.new()
+		r.color = Color(0.85, 0.08, 0.05, 0.0)
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		r.set_anchors_and_offsets_preset(int(cfg[0]))
+		r.offset_left = float(cfg[1])
+		r.offset_top = float(cfg[2])
+		r.offset_right = float(cfg[3])
+		r.offset_bottom = float(cfg[4])
+		hud_layer.add_child(r)
+		_proximity_rects.append(r)
+
 	mental.setup(camera, corruption_overlay, status_label)
 	comms.setup(mental, comms_label)
 
@@ -641,6 +723,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			prone_held_timer = 0.0
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE and not run_finished and intro_lock_timer <= 0.0:
+		jump_buffer_timer = 0.15  # buffered jump — fires within 0.15s of landing
 		wants_jump_this_frame = true
 		return
 	if InputBus.wants_inventory(event) and not run_finished:
@@ -685,9 +768,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif not run_finished and intro_lock_timer <= 0.0 and _wants_weapon_slot(event):
 			_equip_weapon_slot(_weapon_slot_from_event(event))
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_reload(event):
-			if weapon.start_reload():
-				AudioRouter.play_ui("reload_click")
-				_play_reload_dip()
+			var now_sec := Time.get_ticks_msec() / 1000.0
+			var is_double_tap := (now_sec - _last_reload_press_time) < 0.28
+			_last_reload_press_time = now_sec
+			if is_double_tap and weapon.current_ammo > 0 and not weapon.is_reloading:
+				if weapon.panic_reload():
+					AudioRouter.play_ui("reload_click")
+					_play_reload_dip()
+			elif not weapon.is_reloading:
+				if weapon.start_reload():
+					AudioRouter.play_ui("reload_click")
+					_play_reload_dip()
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_quick_bandage(event):
 			_try_quick_bleed_control()
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_trauma_kit(event):
@@ -739,15 +830,23 @@ func _physics_process(delta: float) -> void:
 	var target_velocity = wish_dir * speed
 	velocity.x = lerp(velocity.x, target_velocity.x, clamp(control * delta, 0.0, 1.0))
 	velocity.z = lerp(velocity.z, target_velocity.z, clamp(control * delta, 0.0, 1.0))
+	# Coyote time — allow jumping briefly after stepping off a ledge
+	coyote_timer = 0.10 if is_on_floor() else max(0.0, coyote_timer - delta)
+	jump_buffer_timer = max(0.0, jump_buffer_timer - delta)
 	if not is_on_floor():
-		velocity.y -= gravity * delta
+		# Apex gravity halving — floaty peak that lets players clear obstacles
+		var at_apex := abs(velocity.y) < 1.8
+		velocity.y -= gravity * (0.48 if at_apex else 1.0) * delta
 	else:
-		if wants_jump_this_frame and not is_crouching and not is_prone:
+		if jump_buffer_timer > 0.0 and not is_crouching and not is_prone:
 			velocity.y = jump_velocity
+			coyote_timer = 0.0
+			jump_buffer_timer = 0.0
 		else:
 			velocity.y = -0.05
 	wants_jump_this_frame = false
 	move_and_slide()
+	_update_fall_tracking()
 	_update_stamina(move_input, delta)
 	_update_crouch(delta)
 	_update_weapon_obstruction(delta)
@@ -763,14 +862,29 @@ func _process(delta: float) -> void:
 	_update_blood_tunnel()
 	_update_wearable_power(delta)
 	_update_heartbeat(delta)
+	_update_fear_emitter(delta)
+	_update_flashlight_feel(delta)
+	_update_sprint_fov(delta)
+	_update_floor_wetness(delta)
+	_update_weapon_sway(delta)
+	_update_extraction_beacon(delta)
+	_update_adrenaline(delta)
+	_update_wristband(delta)
+	_update_shepard_tension()
+	_landing_speed_penalty = move_toward(_landing_speed_penalty, 0.0, delta * 1.8)
 	_sample_survivor_path(delta)
 	_update_hud()
 	_update_debug_overlay()
 	_update_notice(delta)
 	_recover_recoil(delta)
+	_update_move_bob(delta)
 	_update_hit_bob(delta)
+	_update_velocity_lean(delta)
+	_update_proximity_indicators(delta)
 	_update_barrel_crosshair()
 	_update_interact_prompt()
+	_update_damage_flash(delta)
+	_update_low_health_pulse(delta)
 
 func _update_cognitive_anchor(delta: float) -> void:
 	if not neural_anchor_active:
@@ -800,15 +914,16 @@ func _visible_to_any_enemy() -> bool:
 
 func _get_target_speed(move_input: Vector2) -> float:
 	var movement_penalty = health.get_movement_modifier() * health.get_stamina_modifier()
+	var land_mult := 1.0 - _landing_speed_penalty
 	if is_prone:
-		return 1.1 * movement_penalty
+		return 1.1 * movement_penalty * land_mult
 	if is_crouching:
-		return crouch_speed * movement_penalty
+		return crouch_speed * movement_penalty * land_mult
 	if stealth_focus:
-		return walk_speed * 0.48 * movement_penalty
+		return walk_speed * 0.48 * movement_penalty * land_mult
 	if InputBus.wants_sprint() and stamina > 1.0 and move_input.length() > 0.1:
-		return sprint_speed * movement_penalty * movement_penalty_mult
-	return walk_speed * movement_penalty
+		return sprint_speed * movement_penalty * movement_penalty_mult * land_mult
+	return walk_speed * movement_penalty * land_mult
 
 func _update_stamina(move_input: Vector2, delta: float) -> void:
 	var sprinting = InputBus.wants_sprint() and move_input.length() > 0.1 and not is_crouching
@@ -841,6 +956,7 @@ func _emit_movement_noise(delta: float, move_input: Vector2, speed: float) -> vo
 	noise_timer -= delta
 	if move_input.length() <= 0.1 or noise_timer > 0.0:
 		return
+	var surface_id: String = _get_surface_id_underfoot()
 	var loudness = 8.0
 	if speed > walk_speed:
 		loudness = 24.0
@@ -851,11 +967,28 @@ func _emit_movement_noise(delta: float, move_input: Vector2, speed: float) -> vo
 	elif is_crouching:
 		loudness = 3.0
 	loudness *= _get_surface_noise_modifier()
-	if int(resources.get("boot_grips", 0)) > 0 and _get_surface_id_underfoot() in ["metal", "grate", "deck"]:
+	if int(resources.get("boot_grips", 0)) > 0 and surface_id in ["metal", "grate", "deck"]:
 		loudness *= 0.5
 	loudness *= footstep_noise_mult
 	GameEvents.emit_player_noise(global_position, loudness)
 	noise_timer = 0.62 if stealth_focus else (0.45 if is_crouching else 0.28)
+	# Play the audible footstep — pitch varies by surface and gait
+	if not is_on_floor():
+		return
+	var step_sound: String = "footstep_soft"
+	if surface_id in ["metal", "grate", "deck", "bulkhead"]:
+		step_sound = "footstep_metal"
+	elif surface_id in ["ceiling", "railing"]:
+		step_sound = "footstep_hard"
+	# Steam vents and wet zones override footstep sound
+	if _floor_wetness > 0.45:
+		step_sound = "footstep_wet"
+	var step_pitch: float = 1.0
+	if speed > walk_speed:
+		step_pitch = 1.08
+	elif is_crouching or stealth_focus:
+		step_pitch = 0.88
+	AudioRouter.play_3d(step_sound, global_position, step_pitch)
 
 func _get_surface_noise_modifier() -> float:
 	var surface_id = _get_surface_id_underfoot()
@@ -891,6 +1024,10 @@ func _update_hud() -> void:
 		objective_tracker.set_player_position(global_position)
 	if minimap:
 		minimap.update(global_position, yaw, objectives_cache, extraction_pos_cache)
+	if glasses_overlay:
+		var corr: float = mental.corruption if mental else 0.0
+		var blood: float = clamp(health.blood_volume / 100.0, 0.0, 1.0) if health else 1.0
+		glasses_overlay.update_effects(corr, blood)
 	_update_contamination_fog()
 	if not weapon or not weapon.data:
 		_force_weapon_ready(equipped_weapon_id)
@@ -1660,7 +1797,15 @@ func _on_damage_taken(part_name: String, amount: float, damage_type: String, res
 	if body_silhouette:
 		body_silhouette.add_wound(part_name, amount, damage_type)
 	_trigger_hit_bob(amount)
+	_trigger_kinetic_stagger(amount, part_name)
 	_show_hit_notice(part_name, amount, damage_type)
+	# Screen flash — intensity scales with damage severity
+	var flash_alpha: float = clamp(amount / 55.0, 0.12, 0.72)
+	damage_flash_timer = 0.0
+	damage_flash_max = 0.45 + flash_alpha * 0.3
+	if damage_flash_rect:
+		damage_flash_rect.color = Color(0.72, 0.0, 0.02, flash_alpha)
+	GameEvents.request_sound("bone_fracture", global_position, clamp(amount / 40.0, 0.5, 1.2))
 	if part_name == PlayerHealthBodyParts.PART_HEAD and has_wearable_module("hud_glasses"):
 		glasses_lens_damage = clamp(glasses_lens_damage + amount / 120.0, 0.0, 1.0)
 		survivor_loadout["glasses_lens_damage"] = glasses_lens_damage
@@ -1689,14 +1834,19 @@ func _trigger_hit_bob(amount: float) -> void:
 func _update_hit_bob(delta: float) -> void:
 	if not camera:
 		return
-	var t: float = Time.get_ticks_msec() * 0.001
-	var shake_offset := Vector3(sin(t * 19.6) * camera_shake, cos(t * 29.8) * camera_shake * 0.6, 0.0)
+	# Upgrade: noise-based shake with exponential decay instead of sine waves
+	shake_noise = shake_noise.lerp(
+		Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), 0.0) * camera_shake * 0.04,
+		delta * 24.0)
+	shake_noise *= pow(0.08, delta)
+	shake_z_tilt = lerp(shake_z_tilt, 0.0, delta * 14.0)
+	# Heartbeat micro-pulse (vertical nudge, decays fast)
+	_heartbeat_pulse = move_toward(_heartbeat_pulse, 0.0, delta * 18.0)
+	var shake_offset := shake_noise + Vector3(0.0, _heartbeat_pulse, 0.0)
 	if hit_bob_timer <= 0.0:
 		var base_pos := camera.position - shake_offset
-		base_pos = base_pos.lerp(Vector3.ZERO, clamp(delta * 12.0, 0.0, 1.0))
+		base_pos = base_pos.lerp(move_bob_offset, clamp(delta * 12.0, 0.0, 1.0))
 		camera.position = base_pos + shake_offset
-		if intro_lock_timer <= 0.0:
-			camera.rotation.z = lerp(camera.rotation.z, 0.0, clamp(delta * 12.0, 0.0, 1.0))
 		return
 	hit_bob_timer = max(0.0, hit_bob_timer - delta)
 	var progress: float = 1.0 - hit_bob_timer / max(0.01, hit_bob_duration)
@@ -1704,6 +1854,41 @@ func _update_hit_bob(delta: float) -> void:
 	camera.position = Vector3(hit_bob_side * 0.025 * hit_bob_strength * wave, -0.018 * hit_bob_strength * wave, 0.0) + shake_offset
 	if intro_lock_timer <= 0.0:
 		camera.rotation.z = hit_bob_side * deg_to_rad(3.4) * hit_bob_strength * wave
+
+func _update_move_bob(delta: float) -> void:
+	if not camera:
+		return
+	var h_vel := Vector2(velocity.x, velocity.z).length()
+	if not is_on_floor() or h_vel < 0.5 or is_prone:
+		if h_vel < 0.1 and is_on_floor() and not is_prone:
+			head_bob_t = 0.0
+			_lissajous_t += delta * 0.75
+			var idle_x := sin(_lissajous_t) * 0.00065
+			var idle_y := sin(_lissajous_t * 1.618033) * 0.00038
+			move_bob_offset = move_bob_offset.lerp(Vector3(idle_x, idle_y, 0.0), delta * 1.2)
+		else:
+			move_bob_offset = move_bob_offset.lerp(Vector3.ZERO, delta * 9.0)
+			if h_vel < 0.1:
+				head_bob_t = 0.0
+		return
+	var is_sprinting := h_vel > sprint_speed * 0.72
+	var bob_freq := 2.6 if is_sprinting else 1.8    # full steps per second
+	var bob_amp := 0.020 if is_sprinting else 0.012  # vertical
+	var sway_amp := 0.009 if is_sprinting else 0.005 # lateral
+	head_bob_t += delta * bob_freq * TAU
+	var vert := sin(head_bob_t) * bob_amp
+	var horiz := sin(head_bob_t * 0.5) * sway_amp
+	var bob_target := Vector3(horiz, vert, 0.0)
+	# Low-health limp: irregular rolling sway when near death
+	var health_ratio := health.total_health_ratio() if health else 1.0
+	if health_ratio < 0.30 and is_on_floor():
+		_limp_t += delta * 1.4
+		var limp_sway := sin(_limp_t * 2.3) * (0.030 - health_ratio * 0.10)
+		var limp_tilt := sin(_limp_t * 1.1) * (0.022 - health_ratio * 0.07)
+		bob_target += Vector3(limp_sway, abs(sin(_limp_t * 2.3)) * 0.008, 0.0)
+		if intro_lock_timer <= 0.0 and hit_bob_timer <= 0.0:
+			camera.rotation.z = lerp(camera.rotation.z, limp_tilt, delta * 3.0)
+	move_bob_offset = move_bob_offset.lerp(bob_target, delta * 18.0)
 
 func _show_hit_notice(part_name: String, amount: float, damage_type: String) -> void:
 	var text: String = "HIT: %s\n%s %.0f" % [part_name.replace("_", " ").to_upper(), damage_type.to_upper(), amount]
@@ -1813,6 +1998,27 @@ func _update_notice(delta: float) -> void:
 		end_label.text = ""
 		notice_active = false
 
+func _update_damage_flash(delta: float) -> void:
+	if not damage_flash_rect:
+		return
+	if damage_flash_timer < damage_flash_max:
+		damage_flash_timer += delta
+	var progress: float = clamp(damage_flash_timer / max(0.01, damage_flash_max), 0.0, 1.0)
+	var current_alpha: float = damage_flash_rect.color.a
+	var target_alpha: float = lerp(current_alpha, 0.0, clamp(progress * progress * delta * 6.0, 0.0, 1.0))
+	damage_flash_rect.color.a = target_alpha
+
+func _update_low_health_pulse(delta: float) -> void:
+	if not damage_flash_rect or not health:
+		return
+	var blood_ratio: float = clamp(health.blood_volume / 100.0, 0.0, 1.0)
+	if blood_ratio > 0.38:
+		return
+	low_health_pulse_timer += delta * lerp(3.8, 1.2, blood_ratio / 0.38)
+	var pulse: float = (sin(low_health_pulse_timer) * 0.5 + 0.5) * (1.0 - blood_ratio / 0.38) * 0.28
+	if damage_flash_rect.color.a < pulse:
+		damage_flash_rect.color = Color(0.55, 0.0, 0.0, pulse)
+
 func _update_lens_material() -> void:
 	if not glasses_lens_mesh:
 		return
@@ -1864,6 +2070,7 @@ func _update_heartbeat(delta: float) -> void:
 		return
 	heartbeat_timer = lerp(1.2, 0.38, arousal)
 	GameEvents.request_sound("heartbeat", global_position, lerp(0.12, 0.75, arousal))
+	_heartbeat_pulse = arousal * 0.012  # micro camera nudge synced to the beat
 
 func _sample_survivor_path(delta: float) -> void:
 	last_path_sample_timer -= delta
@@ -1925,10 +2132,37 @@ func _reinstall_known_cross_weapon_attachments() -> void:
 func _on_weapon_recoil_requested(pitch_radians: float, yaw_radians: float, rearward_kick: float) -> void:
 	var pitch_kick := pitch_radians * recoil_trait_modifier
 	var yaw_kick := yaw_radians * recoil_trait_modifier
-	recoil_hold_timer = 0.14
-	weapon_kick_offset += Vector3(0.0, rearward_kick * 0.28, rearward_kick * 2.0)
-	weapon_kick_rotation += Vector3(pitch_kick * 8.5, yaw_kick * 4.2, -yaw_kick * 3.2)
-	camera_shake = min(camera_shake + abs(pitch_kick) * 0.55 + abs(yaw_kick) * 0.18, 0.055)
+	recoil_hold_timer = 0.16
+	weapon_kick_offset += Vector3(0.0, rearward_kick * 0.35, rearward_kick * 2.4)
+	# Tween-driven recoil: EXPO snap up, SINE recovery to 20% residual during burst
+	if _recoil_tween:
+		_recoil_tween.kill()
+	_recoil_tween = create_tween()
+	var kick_x := weapon_kick_rotation.x + pitch_kick * 9.5
+	var kick_y := weapon_kick_rotation.y + yaw_kick * 5.0
+	var kick_z := weapon_kick_rotation.z - yaw_kick * 3.8
+	_recoil_tween.tween_property(self, "weapon_kick_rotation",
+		Vector3(kick_x, kick_y, kick_z), 0.05)\
+		.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+	var recover_target := Vector3(kick_x * 0.20, kick_y * 0.20, kick_z * 0.20)
+	_recoil_tween.tween_property(self, "weapon_kick_rotation", recover_target, 0.25)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	# Z-axis gun kick (push into screen, spring back)
+	if weapon_pivot:
+		_recoil_tween.parallel().tween_property(weapon_pivot, "position:z",
+			weapon_default_position.z + rearward_kick * 2.2, 0.04)\
+			.set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+		_recoil_tween.tween_property(weapon_pivot, "position:z",
+			weapon_default_position.z, 0.22)\
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Noise-based screen shake contribution
+	var rand_dir := Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), 0.0).normalized()
+	shake_noise += rand_dir * (abs(pitch_kick) * 0.10 + abs(yaw_kick) * 0.05)
+	shake_noise = shake_noise.limit_length(0.10)
+	shake_z_tilt += randf_range(-0.8, 0.8) * abs(yaw_kick) * 0.06
+	shake_z_tilt = clamp(shake_z_tilt, -0.055, 0.055)
+	camera_shake = min(camera_shake + abs(pitch_kick) * 0.72 + abs(yaw_kick) * 0.28, 0.082)
+	_trigger_muzzle_flash_light(rearward_kick)
 
 func _recover_recoil(delta: float) -> void:
 	recoil_hold_timer = max(0.0, recoil_hold_timer - delta)
@@ -2056,6 +2290,7 @@ func _configure_intro_style(intro_style: String) -> void:
 		intro_start_roll = deg_to_rad(-32.0)
 
 func _on_health_died(reason: String) -> void:
+	_save_death_location()
 	died.emit(reason)
 
 func _start_prone_dive() -> void:
@@ -2076,17 +2311,22 @@ func _on_shot_fired(_projectile: BallisticProjectile) -> void:
 	var shot_id := "gunshot_thermal" if family == "thermal" else ("gunshot_heavy" if family in ["lmg", "launcher"] else "gunshot_light")
 	AudioRouter.play_3d(shot_id, muzzle_pos)
 
-func _create_muzzle_flash() -> void:
+func _trigger_muzzle_flash_light(rearward_kick: float) -> void:
+	# Scale flash intensity with caliber — heavier kicks = brighter, longer flash
+	var flash_scale: float = clamp(rearward_kick / 0.18, 0.6, 2.2)
+	_create_muzzle_flash(flash_scale)
+
+func _create_muzzle_flash(scale: float = 1.0) -> void:
 	if not muzzle_marker or not is_instance_valid(muzzle_marker):
 		return
 	var flash = OmniLight3D.new()
-	flash.light_color = Color(1.0, 0.88, 0.55)
+	flash.light_color = Color(1.0, 0.82 + scale * 0.06, 0.42 + scale * 0.08)
 	flash.light_energy = 0.0
-	flash.omni_range = 3.5
+	flash.omni_range = 2.8 + scale * 1.8
 	muzzle_marker.add_child(flash)
 	var tw = flash.create_tween()
-	tw.tween_property(flash, "light_energy", 3.8, 0.028)
-	tw.tween_property(flash, "light_energy", 0.0, 0.055)
+	tw.tween_property(flash, "light_energy", 3.2 * scale, 0.018)
+	tw.tween_property(flash, "light_energy", 0.0, 0.045 + scale * 0.022)
 	tw.tween_callback(flash.queue_free)
 
 func _create_gunshot_smoke() -> void:
@@ -2232,7 +2472,256 @@ func _update_crosshair_spread() -> void:
 	var stance_reduction := 10.0 if is_prone else (6.0 if is_crouching else 0.0)
 	if float(resources.get("suppression_active", 0.0)) > 0.0:
 		stance_reduction += 14.0
-	var target := base_spread + speed_spread + air_spread - stance_reduction
+	# Panic inaccuracy — grows with shot_heat during sustained fire
+	var panic_spread := 0.0
+	if weapon and weapon.has_method("get") and "shot_heat" in weapon:
+		panic_spread = weapon.shot_heat * 28.0
+	var target := base_spread + speed_spread + air_spread + panic_spread - stance_reduction
 	crosshair_ctrl.spread_px = lerp(crosshair_ctrl.spread_px, max(10.0, target), get_process_delta_time() * 4.0)
 	crosshair_ctrl.role_cooldown = float(resources.get("role_ability_cooldown", 0.0))
 	crosshair_ctrl.role_cooldown_max = _get_role_ability_cooldown_duration()
+
+# ────────────────────────────────────────────────────────────────
+# HORROR ATMOSPHERE SYSTEMS
+# ────────────────────────────────────────────────────────────────
+
+func _update_fear_emitter(delta: float) -> void:
+	var nearest_dist := 999.0
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var d := global_position.distance_to(enemy.global_position)
+		if d < nearest_dist:
+			nearest_dist = d
+	var fear_target := clamp(1.0 - (nearest_dist - 4.0) / 12.0, 0.0, 1.0)
+	_fear_level = lerp(_fear_level, fear_target, delta * 1.8)
+	# Duck ambient hum as fear rises
+	if ambient_hum_player:
+		ambient_hum_player.volume_db = lerp(-14.0, -60.0, _fear_level)
+	# Breathing audio at high fear or low health
+	var pain_level := health.pain / 120.0 if health else 0.0
+	if _fear_level > 0.35 or pain_level > 0.20:
+		_breath_timer -= delta
+		if _breath_timer <= 0.0:
+			_breath_timer = lerp(3.2, 1.2, max(_fear_level, pain_level))
+			AudioRouter.play_ui("breath_exhale",
+				lerp(0.3, 0.85, max(_fear_level, pain_level)))
+
+func _update_flashlight_feel(delta: float) -> void:
+	if not flashlight:
+		return
+	# Lag: flashlight rotation trails camera direction
+	var cam_basis := camera.global_transform.basis
+	var lag_basis := flashlight.global_transform.basis.slerp(cam_basis, delta * 7.0)
+	flashlight.global_transform.basis = lag_basis
+	# Battery drain while flashlight is on
+	if flashlight.visible:
+		flashlight_battery = max(0.0, flashlight_battery - delta * 1.4)
+	else:
+		flashlight_battery = min(100.0, flashlight_battery + delta * 4.0)
+	# Flicker and fail at low battery
+	if flashlight_battery <= 0.0:
+		flashlight.light_energy = 0.0
+	elif flashlight_battery < 15.0:
+		_fl_flicker_timer -= delta
+		if _fl_flicker_timer <= 0.0:
+			_fl_flicker_timer = randf_range(0.04, 0.22)
+			flashlight.light_energy = randf_range(0.0, 2.5) * (flashlight_battery / 15.0)
+	else:
+		flashlight.light_energy = lerp(flashlight.light_energy,
+			2.2 * (flashlight_battery / 100.0 * 0.4 + 0.6), delta * 12.0)
+
+func _update_sprint_fov(delta: float) -> void:
+	if not camera:
+		return
+	var h_vel := Vector2(velocity.x, velocity.z).length()
+	var sprint_ratio := clamp((h_vel - walk_speed) / max(0.1, sprint_speed - walk_speed), 0.0, 1.0)
+	var base := mental.base_fov if mental else 75.0
+	camera.fov = lerp(camera.fov, base + sprint_ratio * 8.0, delta * 5.0)
+
+func _update_velocity_lean(delta: float) -> void:
+	if not camera or hit_bob_timer > 0.0 or intro_lock_timer > 0.0:
+		return
+	var local_lat := (global_transform.basis.inverse() * Vector3(velocity.x, 0.0, velocity.z)).x
+	var lean := clamp(local_lat * 0.013, -0.048, 0.048)
+	camera.rotation.z = lerp(camera.rotation.z, lean + shake_z_tilt, delta * 5.0)
+
+func _update_proximity_indicators(delta: float) -> void:
+	if _proximity_rects.is_empty():
+		return
+	# Find strongest nearby threat that is not currently visible to us
+	var max_closeness := 0.0
+	var cam_forward := -camera.global_transform.basis.z
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var to_e := enemy.global_position - global_position
+		var dist := to_e.length()
+		if dist > 8.0:
+			continue
+		# Skip if squarely in front of us (player can see it)
+		var dot := cam_forward.dot(to_e.normalized())
+		if dot > 0.5:
+			continue
+		max_closeness = max(max_closeness, 1.0 - dist / 8.0)
+	# Pulse alpha
+	var pulse := abs(sin(Time.get_ticks_msec() * 0.001 * 0.8 * TAU)) * max_closeness * 0.38
+	for r in _proximity_rects:
+		r.color.a = lerp(r.color.a, pulse, delta * 8.0)
+
+# ────────────────────────────────────────────────────────────────
+# SPRINT 2 SYSTEMS
+# ────────────────────────────────────────────────────────────────
+
+func _update_floor_wetness(delta: float) -> void:
+	var near_wet := false
+	for zone in get_tree().get_nodes_in_group("wet_zone"):
+		if zone is Area3D and (zone as Area3D).overlaps_body(self):
+			near_wet = true
+			break
+	_floor_wetness = lerp(_floor_wetness, 1.0 if near_wet else 0.0, delta * 2.0)
+
+func _update_weapon_sway(delta: float) -> void:
+	if not weapon_pivot or run_finished:
+		_prev_yaw = yaw
+		_prev_pitch = pitch
+		return
+	var dyaw := yaw - _prev_yaw
+	var dpitch := pitch - _prev_pitch
+	_prev_yaw = yaw
+	_prev_pitch = pitch
+	var sway_x := clamp(-dyaw * 0.18, -0.06, 0.06)
+	var sway_y := clamp(-dpitch * 0.10, -0.04, 0.04)
+	_weapon_sway = _weapon_sway.lerp(Vector3(sway_x, sway_y, 0.0), delta * 8.0)
+	weapon_pivot.rotation.y = lerp(weapon_pivot.rotation.y, _weapon_sway.x, delta * 12.0)
+	weapon_pivot.rotation.x = lerp(weapon_pivot.rotation.x,
+		_weapon_sway.y + weapon_kick_rotation.x * 0.018, delta * 12.0)
+
+func _update_fall_tracking() -> void:
+	var on_floor_now := is_on_floor()
+	if not on_floor_now:
+		_fall_peak_y = max(_fall_peak_y, global_position.y)
+	elif not _was_on_floor:
+		var fall_dist := _fall_peak_y - global_position.y
+		if fall_dist > 1.8:
+			_trigger_landing_impact(fall_dist)
+		_fall_peak_y = global_position.y
+	_was_on_floor = on_floor_now
+
+func _trigger_landing_impact(fall_dist: float) -> void:
+	var severity := clamp((fall_dist - 1.8) / 4.0, 0.0, 1.0)
+	hit_bob_timer = 0.28
+	hit_bob_duration = 0.28
+	hit_bob_strength = clamp(severity * 1.4, 0.3, 1.0)
+	hit_bob_side = 0.0
+	_landing_speed_penalty = lerp(0.0, 0.6, severity)
+	camera_shake = min(camera_shake + severity * 0.06, 0.12)
+	GameEvents.request_sound("footstep_metal", global_position, lerp(0.7, 1.5, severity))
+	if severity > 0.5 and health:
+		stamina = max(0.0, stamina - severity * 18.0)
+
+func _update_extraction_beacon(delta: float) -> void:
+	if not _extraction_available or run_finished:
+		return
+	_beacon_pulse_timer -= delta
+	if _beacon_pulse_timer <= 0.0:
+		_beacon_pulse_timer = 2.8
+		AudioRouter.play_ui("extraction_beacon", 0.6)
+
+func _build_wristband_vitals() -> void:
+	var wristband := Node3D.new()
+	wristband.name = "WristbandVitals"
+	wristband.position = Vector3(-0.26, -0.35, -0.52)
+	wristband.rotation_degrees = Vector3(35.0, -18.0, -8.0)
+	camera.add_child(wristband)
+	_wristband_mesh = MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.024
+	cyl.bottom_radius = 0.024
+	cyl.height = 0.009
+	cyl.radial_segments = 20
+	_wristband_mesh.mesh = cyl
+	_wristband_mat = StandardMaterial3D.new()
+	_wristband_mat.albedo_color = Color(0.05, 0.75, 0.15)
+	_wristband_mat.emission_enabled = true
+	_wristband_mat.emission = Color(0.05, 0.75, 0.15)
+	_wristband_mat.emission_energy_multiplier = 0.6
+	_wristband_mesh.material_override = _wristband_mat
+	wristband.add_child(_wristband_mesh)
+
+func _update_wristband(delta: float) -> void:
+	if not _wristband_mat or not health:
+		return
+	var hp := health.total_health_ratio()
+	var target_color: Color
+	if hp > 0.6:
+		target_color = Color(0.05, 0.75, 0.15)
+	elif hp > 0.3:
+		target_color = Color(0.82, 0.68, 0.05)
+	else:
+		target_color = Color(0.85, 0.06, 0.06)
+	_wristband_mat.albedo_color = _wristband_mat.albedo_color.lerp(target_color, delta * 3.0)
+	_wristband_mat.emission = _wristband_mat.albedo_color
+	_wristband_mat.emission_energy_multiplier = lerp(
+		_wristband_mat.emission_energy_multiplier,
+		0.4 + _heartbeat_pulse * 20.0, delta * 12.0)
+
+func _update_adrenaline(delta: float) -> void:
+	if not health or run_finished:
+		_adrenaline_phase = 0
+		return
+	var nearest := 999.0
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if not is_instance_valid(enemy):
+			continue
+		var d := global_position.distance_to(enemy.global_position)
+		if d < nearest:
+			nearest = d
+	if _adrenaline_phase == 0 and _prev_nearest_enemy > 8.0 and nearest < 5.0:
+		_adrenaline_phase = 1
+		_adrenaline_timer = 6.0
+	_prev_nearest_enemy = nearest
+	match _adrenaline_phase:
+		1:
+			_adrenaline_timer -= delta
+			_weapon_sway = _weapon_sway.lerp(Vector3.ZERO, delta * 14.0)
+			if _adrenaline_timer <= 0.0:
+				_adrenaline_phase = 2
+				_adrenaline_timer = 8.0
+		2:
+			_adrenaline_timer -= delta
+			shake_noise += Vector3(
+				randf_range(-1.0, 1.0),
+				randf_range(-1.0, 1.0), 0.0) * 0.0022
+			if _adrenaline_timer <= 0.0:
+				_adrenaline_phase = 0
+
+func _update_shepard_tension() -> void:
+	var nearest := _prev_nearest_enemy
+	var tension := clamp(1.0 - (nearest - 3.0) / 11.0, 0.0, 1.0)
+	var target_db := lerp(-80.0, -14.0, tension)
+	AudioRouter.set_shepard_volume(target_db)
+
+func _trigger_kinetic_stagger(amount: float, part_name: String) -> void:
+	var severity := clamp(amount / 45.0, 0.0, 1.0)
+	if severity < 0.18:
+		return
+	var side := 1.0 if (part_name == PlayerHealthBodyParts.PART_RIGHT_ARM or
+		part_name == PlayerHealthBodyParts.PART_RIGHT_LEG) else -1.0
+	yaw += side * severity * 0.038 * randf_range(0.6, 1.4)
+	pitch = clamp(pitch - severity * 0.025, deg_to_rad(-82.0), deg_to_rad(82.0))
+	rotation.y = yaw
+	head.rotation.x = pitch
+
+func _save_death_location() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load("user://death_records.cfg")
+	var records: Array = []
+	var raw: Variant = cfg.get_value("deaths", "positions", [])
+	if raw is Array:
+		records = raw
+	records.append({"x": global_position.x, "y": global_position.y, "z": global_position.z})
+	if records.size() > 5:
+		records = records.slice(records.size() - 5)
+	cfg.set_value("deaths", "positions", records)
+	cfg.save("user://death_records.cfg")

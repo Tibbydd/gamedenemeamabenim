@@ -3,23 +3,23 @@ class_name EnemyArchetypeCatalog
 
 static func get_archetypes() -> Array[Dictionary]:
 	return [
-		_a("swarmer", "Swarmer", 18, 7.2, 0.95, 18, 1.4, Color(0.12, 0.55, 0.18), {}, ["fast", "fragile", "swarm"], 4.0, 0.18, 0.55),
-		_a("stalker_husk", "Stalker Husk", 65, 3.3, 1.6, 28, 1.0, Color(0.22, 0.25, 0.28), {}, []),
-		_a("crawler_husk", "Crawler Husk", 38, 4.1, 1.15, 18, 1.3, Color(0.18, 0.28, 0.24), {}, ["small_route"]),
-		_a("bleeder", "Bleeder", 54, 2.8, 8.5, 24, 1.0, Color(0.34, 0.16, 0.18), {}, ["ranged_bleed"]),
-		_a("carapace", "Carapace", 120, 2.1, 1.8, 22, 0.75, Color(0.18, 0.2, 0.18), {"torso": 0.6, "left_arm": 0.45, "right_arm": 0.45, "left_leg": 0.35, "right_leg": 0.35, "head": 0.25}, ["armored_core"]),
-		_a("echo", "Echo", 46, 3.4, 1.5, 4, 2.5, Color(0.12, 0.18, 0.22), {}, ["sound_driven"]),
-		_a("howler", "Howler", 58, 3.0, 1.7, 26, 1.2, Color(0.3, 0.22, 0.14), {}, ["death_noise"]),
-		_a("sleeper_pod", "Sleeper Pod", 42, 0.0, 1.3, 8, 0.4, Color(0.16, 0.12, 0.18), {"torso": 0.2}, ["dormant"]),
-		_a("stalker_twin", "Stalker Twin", 58, 3.6, 1.55, 27, 1.0, Color(0.24, 0.22, 0.32), {}, ["paired_flanker"]),
-		_a("glasswalker", "Glasswalker", 52, 3.9, 1.45, 30, 0.9, Color(0.18, 0.3, 0.34), {}, ["vertical_route"]),
-		_a("surgeon", "Surgeon", 62, 3.0, 1.4, 22, 1.0, Color(0.34, 0.28, 0.26), {}, ["kit_hunter"]),
-		_a("choir", "Choir", 150, 1.55, 1.8, 20, 0.8, Color(0.2, 0.16, 0.26), {"torso": 0.25}, ["corruption_aura"]),
-		_a("shellroot", "Shellroot", 180, 0.0, 0.0, 0, 0.0, Color(0.14, 0.2, 0.16), {"torso": 0.7, "left_arm": 0.7, "right_arm": 0.7, "left_leg": 0.7, "right_leg": 0.7}, ["thermal_blocker", "immobile"]),
-		_a("relay_voice", "Relay Voice", 48, 2.7, 1.4, 18, 1.1, Color(0.25, 0.2, 0.3), {}, ["false_comms"]),
-		_a("mimic_prop", "Mimic Prop", 44, 0.0, 1.2, 6, 0.6, Color(0.28, 0.26, 0.22), {"torso": 0.2}, ["disguised_as_prop", "classifier_lies_under_corruption"]),
-		_a("door_closer", "Door Closer", 60, 3.1, 1.6, 22, 1.1, Color(0.22, 0.18, 0.2), {}, ["closes_doors_behind_self"]),
-		_a("carrion_eater", "Carrion Eater", 50, 2.4, 1.3, 14, 0.9, Color(0.26, 0.22, 0.14), {}, ["prefers_corpses_over_player", "spawns_in_low_oxygen"])
+		_a("swarmer",      "Swarmer",      18,  7.2, 0.95, 18, 1.4, Color(0.08, 0.62, 0.18), {}, ["fast", "fragile", "swarm"], 4.0, 0.18, 0.55),
+		_a("stalker_husk", "Stalker Husk", 65,  3.3, 1.6,  28, 1.0, Color(0.20, 0.22, 0.30), {}, []),
+		_a("crawler_husk", "Crawler Husk", 38,  4.1, 1.15, 18, 1.3, Color(0.14, 0.30, 0.22), {}, ["small_route"]),
+		_a("bleeder",      "Bleeder",      54,  2.8, 8.5,  24, 1.0, Color(0.48, 0.08, 0.10), {}, ["ranged_bleed"]),
+		_a("carapace",     "Carapace",     120, 2.1, 1.8,  22, 0.75, Color(0.16, 0.22, 0.14), {"torso": 0.6, "left_arm": 0.45, "right_arm": 0.45, "left_leg": 0.35, "right_leg": 0.35, "head": 0.25}, ["armored_core"]),
+		_a("echo",         "Echo",         46,  3.4, 1.5,  4,  2.5, Color(0.06, 0.10, 0.28), {}, ["sound_driven"]),
+		_a("howler",       "Howler",       58,  3.0, 1.7,  26, 1.2, Color(0.52, 0.28, 0.06), {}, ["death_noise"]),
+		_a("sleeper_pod",  "Sleeper Pod",  42,  0.0, 1.3,  8,  0.4, Color(0.28, 0.08, 0.38), {"torso": 0.2}, ["dormant"]),
+		_a("stalker_twin", "Stalker Twin", 58,  3.6, 1.55, 27, 1.0, Color(0.30, 0.18, 0.38), {}, ["paired_flanker"]),
+		_a("glasswalker",  "Glasswalker",  52,  3.9, 1.45, 30, 0.9, Color(0.10, 0.40, 0.58), {}, ["vertical_route"]),
+		_a("surgeon",      "Surgeon",      62,  3.0, 1.4,  22, 1.0, Color(0.62, 0.58, 0.52), {}, ["kit_hunter"]),
+		_a("choir",        "Choir",        150, 1.55, 1.8, 20, 0.8, Color(0.22, 0.06, 0.38), {"torso": 0.25}, ["corruption_aura"]),
+		_a("shellroot",    "Shellroot",    180, 0.0, 0.0,  0,  0.0, Color(0.12, 0.22, 0.10), {"torso": 0.7, "left_arm": 0.7, "right_arm": 0.7, "left_leg": 0.7, "right_leg": 0.7}, ["thermal_blocker", "immobile"]),
+		_a("relay_voice",  "Relay Voice",  48,  2.7, 1.4,  18, 1.1, Color(0.18, 0.16, 0.52), {}, ["false_comms"]),
+		_a("mimic_prop",   "Mimic Prop",   44,  0.0, 1.2,  6,  0.6, Color(0.30, 0.26, 0.20), {"torso": 0.2}, ["disguised_as_prop", "classifier_lies_under_corruption"]),
+		_a("door_closer",  "Door Closer",  60,  3.1, 1.6,  22, 1.1, Color(0.26, 0.16, 0.14), {}, ["closes_doors_behind_self"]),
+		_a("carrion_eater","Carrion Eater",50,  2.4, 1.3,  14, 0.9, Color(0.42, 0.34, 0.06), {}, ["prefers_corpses_over_player", "spawns_in_low_oxygen"])
 	]
 
 static func get_archetype(archetype_id: String) -> Dictionary:

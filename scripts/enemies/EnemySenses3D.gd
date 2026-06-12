@@ -1,6 +1,8 @@
 extends Node
 class_name EnemySenses3D
 
+const MEMORY_DECAY_SECS := 40.0  # seconds without contact before enemy loses track
+
 var owner_enemy: EnemyBase3D
 var sight_range: float = 28.0
 var hearing_sensitivity: float = 1.0
@@ -29,6 +31,9 @@ func update_senses(player: PlayerControllerFPS, delta: float) -> void:
 	triangulated_timer = max(0.0, triangulated_timer - delta)
 	sighting_report_cooldown = max(0.0, sighting_report_cooldown - delta)
 	_update_hazes(delta)
+	# Memory decay — enemy forgets last known position if contact has been lost long enough
+	if has_last_known_position and time_since_seen >= MEMORY_DECAY_SECS and time_since_heard >= 8.0:
+		has_last_known_position = false
 	can_see_player = false
 	if not owner_enemy or not player:
 		return
