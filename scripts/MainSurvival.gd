@@ -76,7 +76,7 @@ func _play_ambient_event() -> void:
 		player_pos = player.global_position
 	var floor_y: float = player_pos.y
 	# Roll the sound type weighted by context
-	var roll := randf()
+	var roll: float = randf()
 	var sound_id: String
 	if roll < 0.22:
 		sound_id = "ambient_pipe_groan"
@@ -91,9 +91,9 @@ func _play_ambient_event() -> void:
 	else:
 		sound_id = "ambient_hum"
 	# Place the sound near the player but offset to a random direction
-	var angle := randf() * TAU
-	var dist := randf_range(6.0, 22.0)
-	var height_offset := randf_range(-1.2, 3.5)
+	var angle: float = randf() * TAU
+	var dist: float = randf_range(6.0, 22.0)
+	var height_offset: float = randf_range(-1.2, 3.5)
 	var event_position := Vector3(
 		player_pos.x + cos(angle) * dist,
 		floor_y + height_offset,
@@ -2412,7 +2412,7 @@ func _build_outer_hull() -> void:
 	var pi_idx := 0
 	for px in corner_xs:
 		for pz in corner_zs:
-			var ph := 4.2 if pz == -36.2 or pz == -20.2 else 16.2
+			var ph: float = 4.2 if pz == -36.2 or pz == -20.2 else 16.2
 			var pcy := ph * 0.5 - 0.3
 			_create_box("Pillar%d" % pi_idx, Vector3(px, pcy, pz),
 				Vector3(0.55, ph, 0.55), pillar_color, false, "")
@@ -2520,13 +2520,13 @@ func _create_window_panel(win_name: String, center: Vector3, size: Vector2, is_n
 	var ft := 0.13                      # frame thickness
 	var fd := 0.38                      # frame depth (matches wall depth)
 	# Top / bottom frames
-	var top_s := Vector3(size.x + ft * 2.0, ft, fd) if is_ns else Vector3(fd, ft, size.x + ft * 2.0)
+	var top_s: Vector3 = Vector3(size.x + ft * 2.0, ft, fd) if is_ns else Vector3(fd, ft, size.x + ft * 2.0)
 	_create_box(win_name + "FT", center + Vector3(0, size.y * 0.5 + ft * 0.5, 0), top_s, fc, true, "bulkhead")
 	_create_box(win_name + "FB", center + Vector3(0, -(size.y * 0.5 + ft * 0.5), 0), top_s, fc, true, "bulkhead")
 	# Left / right frames
-	var side_s := Vector3(ft, size.y, fd) if is_ns else Vector3(fd, size.y, ft)
-	var off_x := (size.x * 0.5 + ft * 0.5) if is_ns else 0.0
-	var off_z := 0.0 if is_ns else (size.x * 0.5 + ft * 0.5)
+	var side_s: Vector3 = Vector3(ft, size.y, fd) if is_ns else Vector3(fd, size.y, ft)
+	var off_x: float = (size.x * 0.5 + ft * 0.5) if is_ns else 0.0
+	var off_z: float = 0.0 if is_ns else (size.x * 0.5 + ft * 0.5)
 	_create_box(win_name + "FL", center + Vector3(-off_x, 0, -off_z), side_s, fc, true, "bulkhead")
 	_create_box(win_name + "FR", center + Vector3( off_x, 0,  off_z), side_s, fc, true, "bulkhead")
 	# Transparent glass
@@ -2684,8 +2684,8 @@ func _build_wall_detail_pass() -> void:
 		_add_detail_strip(rn+"PE", Vector3(cx+sx*0.5-0.02, fy+1.35, cz), Vector3(0.04, 0.05, sd), trim_c.lightened(0.1))
 		# Ceiling fluorescent strip running along longer axis
 		var is_wide := sx >= sd
-		var strip_l := (sx - 0.6) if is_wide else (sd - 0.6)
-		var strip_s := Vector3(strip_l, 0.06, 0.14) if is_wide else Vector3(0.14, 0.06, strip_l)
+		var strip_l: float = (sx - 0.6) if is_wide else (sd - 0.6)
+		var strip_s: Vector3 = Vector3(strip_l, 0.06, 0.14) if is_wide else Vector3(0.14, 0.06, strip_l)
 		_add_emissive_strip(rn+"CL", Vector3(cx, fy+2.96, cz), strip_s, ceil_c, 1.15)
 	# Key room emissive screen panels (placed 0.12 m off the wall face)
 	# F3 north-face command windows — screens inside the rooms facing the window

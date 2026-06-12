@@ -62,7 +62,7 @@ func _process(_delta: float) -> void:
 func _set_active(new_active: bool, reason: String) -> void:
 	active = new_active
 	if mesh_instance:
-		var color := active_color if active else inactive_color
+		var color: Color = active_color if active else inactive_color
 		mesh_instance.material_override = _make_material(color, 0.7 if active else 0.1)
 	activated.emit(button_id)
 	GameEvents.request_sound("button", global_position, 0.8)

@@ -46,7 +46,7 @@ func reduce_corruption(amount: float) -> void:
 func get_display_ammo(real_ammo: int) -> String:
 	if corruption < 55.0 or randf() > corruption / 160.0:
 		return str(real_ammo)
-	var drift_range := 3 if corruption >= 70.0 else 2
+	var drift_range: int = 3 if corruption >= 70.0 else 2
 	var drift := randi_range(-drift_range, drift_range)
 	return str(max(0, real_ammo + drift))
 

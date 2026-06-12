@@ -60,7 +60,7 @@ func _process(delta: float) -> void:
 			_tw_char_timer = 1.0 / 42.0
 			_tw_pos += 1
 			comms_label.text = _tw_target.substr(0, _tw_pos)
-			var corruption := mental.corruption if mental else 0.0
+			var corruption: float = mental.corruption if mental else 0.0
 			comms_label.modulate = Color(0.75, 1.0, 0.9).lerp(Color(1.0, 0.28, 0.2), clamp(corruption / 100.0, 0.0, 1.0))
 		return
 	message_timer -= delta
@@ -69,7 +69,7 @@ func _process(delta: float) -> void:
 		message_timer = message_interval + randf_range(-3.0, 4.0)
 
 func _pick_context_message() -> String:
-	var corruption := mental.corruption if mental else 0.0
+	var corruption: float = mental.corruption if mental else 0.0
 	if trust_score < 0.35 and corruption >= 50.0:
 		return "I am trying to help. The channel is making me sound wrong."
 	if corruption >= 80.0:
@@ -93,7 +93,7 @@ func _pick_context_message() -> String:
 	])
 
 func _distort_message(message: String) -> String:
-	var corruption := mental.corruption if mental else 0.0
+	var corruption: float = mental.corruption if mental else 0.0
 	if corruption < 55.0:
 		return message
 	if corruption < 80.0:
@@ -141,8 +141,8 @@ func _refresh_display() -> void:
 		comms_label.text = "COMMS: NO EARPIECE"
 		comms_label.modulate = Color(0.45, 0.55, 0.55)
 		return
-	var corruption := mental.corruption if mental else 0.0
-	var message := last_message if not last_message.is_empty() else _signal_quality_text()
+	var corruption: float = mental.corruption if mental else 0.0
+	var message: String = last_message if not last_message.is_empty() else _signal_quality_text()
 	if corruption >= 70.0 and flicker_timer <= 0.0 and randf() < 0.035:
 		flicker_timer = randf_range(0.12, 0.34)
 	if flicker_timer > 0.0:

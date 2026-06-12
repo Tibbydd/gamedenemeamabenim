@@ -76,7 +76,7 @@ func _check_destroyed(impact_position: Vector3) -> void:
 
 func _update_scar_visual() -> void:
 	var color := Color(0.18, 0.2, 0.2).lerp(Color(0.45, 0.18, 0.12), scar_level)
-	var emission := scar_level * 0.25 if scar_level > 0.25 else 0.0
+	var emission: float = scar_level * 0.25 if scar_level > 0.25 else 0.0
 	var material := EffectMaterialCache.get_material(color, emission)
 	for child in get_children():
 		if child is MeshInstance3D:

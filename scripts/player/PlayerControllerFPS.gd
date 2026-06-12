@@ -1872,15 +1872,15 @@ func _update_move_bob(delta: float) -> void:
 				head_bob_t = 0.0
 		return
 	var is_sprinting := h_vel > sprint_speed * 0.72
-	var bob_freq := 2.6 if is_sprinting else 1.8    # full steps per second
-	var bob_amp := 0.020 if is_sprinting else 0.012  # vertical
-	var sway_amp := 0.009 if is_sprinting else 0.005 # lateral
+	var bob_freq: float = 2.6 if is_sprinting else 1.8
+	var bob_amp: float = 0.020 if is_sprinting else 0.012
+	var sway_amp: float = 0.009 if is_sprinting else 0.005
 	head_bob_t += delta * bob_freq * TAU
 	var vert := sin(head_bob_t) * bob_amp
 	var horiz := sin(head_bob_t * 0.5) * sway_amp
 	var bob_target := Vector3(horiz, vert, 0.0)
 	# Low-health limp: irregular rolling sway when near death
-	var health_ratio := health.total_health_ratio() if health else 1.0
+	var health_ratio: float = health.total_health_ratio() if health else 1.0
 	if health_ratio < 0.30 and is_on_floor():
 		_limp_t += delta * 1.4
 		var limp_sway := sin(_limp_t * 2.3) * (0.030 - health_ratio * 0.10)
@@ -2306,9 +2306,9 @@ func _on_shot_fired(_projectile: BallisticProjectile) -> void:
 	if crosshair_ctrl:
 		crosshair_ctrl.notify_fired()
 		crosshair_ctrl.spread_px = min(crosshair_ctrl.spread_px + 18.0, 62.0)
-	var muzzle_pos := muzzle_marker.global_position if muzzle_marker else global_position
-	var family := weapon.data.weapon_family if weapon and weapon.data else ""
-	var shot_id := "gunshot_thermal" if family == "thermal" else ("gunshot_heavy" if family in ["lmg", "launcher"] else "gunshot_light")
+	var muzzle_pos: Vector3 = muzzle_marker.global_position if muzzle_marker else global_position
+	var family: String = weapon.data.weapon_family if weapon and weapon.data else ""
+	var shot_id: String = "gunshot_thermal" if family == "thermal" else ("gunshot_heavy" if family in ["lmg", "launcher"] else "gunshot_light")
 	AudioRouter.play_3d(shot_id, muzzle_pos)
 
 func _trigger_muzzle_flash_light(rearward_kick: float) -> void:
@@ -2466,10 +2466,10 @@ func _update_crosshair_spread() -> void:
 	if weapon and weapon.data:
 		base_spread = weapon.data.spread_degrees * 22.0
 	var vel_xz := Vector2(velocity.x, velocity.z).length()
-	var max_speed := sprint_speed if sprint_speed > 0.0 else 8.0
-	var speed_spread := (vel_xz / max_speed) * 32.0
-	var air_spread := 42.0 if not is_on_floor() else 0.0
-	var stance_reduction := 10.0 if is_prone else (6.0 if is_crouching else 0.0)
+	var max_speed: float = sprint_speed if sprint_speed > 0.0 else 8.0
+	var speed_spread: float = (vel_xz / max_speed) * 32.0
+	var air_spread: float = 42.0 if not is_on_floor() else 0.0
+	var stance_reduction: float = 10.0 if is_prone else (6.0 if is_crouching else 0.0)
 	if float(resources.get("suppression_active", 0.0)) > 0.0:
 		stance_reduction += 14.0
 	# Panic inaccuracy — grows with shot_heat during sustained fire
@@ -2493,13 +2493,13 @@ func _update_fear_emitter(delta: float) -> void:
 		var d := global_position.distance_to(enemy.global_position)
 		if d < nearest_dist:
 			nearest_dist = d
-	var fear_target := clamp(1.0 - (nearest_dist - 4.0) / 12.0, 0.0, 1.0)
+	var fear_target: float = clamp(1.0 - (nearest_dist - 4.0) / 12.0, 0.0, 1.0)
 	_fear_level = lerp(_fear_level, fear_target, delta * 1.8)
 	# Duck ambient hum as fear rises
 	if ambient_hum_player:
 		ambient_hum_player.volume_db = lerp(-14.0, -60.0, _fear_level)
 	# Breathing audio at high fear or low health
-	var pain_level := health.pain / 120.0 if health else 0.0
+	var pain_level: float = health.pain / 120.0 if health else 0.0
 	if _fear_level > 0.35 or pain_level > 0.20:
 		_breath_timer -= delta
 		if _breath_timer <= 0.0:
@@ -2535,8 +2535,8 @@ func _update_sprint_fov(delta: float) -> void:
 	if not camera:
 		return
 	var h_vel := Vector2(velocity.x, velocity.z).length()
-	var sprint_ratio := clamp((h_vel - walk_speed) / max(0.1, sprint_speed - walk_speed), 0.0, 1.0)
-	var base := mental.base_fov if mental else 75.0
+	var sprint_ratio: float = clamp((h_vel - walk_speed) / max(0.1, sprint_speed - walk_speed), 0.0, 1.0)
+	var base: float = mental.base_fov if mental else 75.0
 	camera.fov = lerp(camera.fov, base + sprint_ratio * 8.0, delta * 5.0)
 
 func _update_velocity_lean(delta: float) -> void:
@@ -2565,7 +2565,7 @@ func _update_proximity_indicators(delta: float) -> void:
 			continue
 		max_closeness = max(max_closeness, 1.0 - dist / 8.0)
 	# Pulse alpha
-	var pulse := abs(sin(Time.get_ticks_msec() * 0.001 * 0.8 * TAU)) * max_closeness * 0.38
+	var pulse: float = abs(sin(Time.get_ticks_msec() * 0.001 * 0.8 * TAU)) * max_closeness * 0.38
 	for r in _proximity_rects:
 		r.color.a = lerp(r.color.a, pulse, delta * 8.0)
 

@@ -61,14 +61,14 @@ func receive_generic_hit(damage: float, hit_position: Vector3, hit_direction: Ve
 
 func apply_environment_impulse(origin: Vector3, force: float, radius: float, reason: String) -> void:
 	super.apply_environment_impulse(origin, force, radius, reason)
-	var multiplier := 2.4 if reason == "player_shove" else 1.0
+	var multiplier: float = 2.4 if reason == "player_shove" else 1.0
 	_stress_door(force * multiplier, reason)
 
 func activate_from_physics(body: Node, impact_speed: float) -> void:
 	var mass_value := 8.0
 	if body is RigidBody3D:
 		mass_value = (body as RigidBody3D).mass
-	var multiplier := 1.15 if body and body.is_in_group("heavy_pry_objects") else 1.0
+	var multiplier: float = 1.15 if body and body.is_in_group("heavy_pry_objects") else 1.0
 	_stress_door(float(mass_value) * impact_speed * 0.55 * multiplier, "thrown_object")
 
 func use(actor: Node) -> void:
@@ -84,7 +84,7 @@ func _stress_door(amount: float, reason: String) -> void:
 	if state == FacilityProgression.DOOR_OPEN or state == FacilityProgression.DOOR_SEALED:
 		return
 	force_work += amount
-	var threshold := 70.0 if state == FacilityProgression.DOOR_JAMMED else 105.0
+	var threshold: float = 70.0 if state == FacilityProgression.DOOR_JAMMED else 105.0
 	if force_work >= threshold:
 		set_state(FacilityProgression.DOOR_OPEN)
 		door_forced_open.emit(door_id)
@@ -114,7 +114,7 @@ func _build_body(size: Vector3, color: Color) -> void:
 	add_child(mesh_instance)
 	lock_housing = DoorLockHousing3D.new()
 	lock_housing.name = "LockHousing"
-	var side_offset := size.x * 0.38 if size.x >= size.z else 0.0
+	var side_offset: float = size.x * 0.38 if size.x >= size.z else 0.0
 	lock_housing.setup(self, side_offset)
 	add_child(lock_housing)
 
