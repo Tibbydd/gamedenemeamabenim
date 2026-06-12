@@ -1,0 +1,7 @@
+res://scripts/MainSurvival.gd
+res://scripts/player/PlayerControllerFPS.gd
+res://scripts/systems/CommsManager.gd
+res://scripts/systems/DynamicButton3D.gd
+res://scripts/systems/FacilityDoor3D.gd
+res://scripts/systems/MentalStateManager.gd
+res://scripts/systems/ReactiveStaticBody3D.gd

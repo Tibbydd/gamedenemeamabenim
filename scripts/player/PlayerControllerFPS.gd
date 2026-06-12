@@ -768,8 +768,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif not run_finished and intro_lock_timer <= 0.0 and _wants_weapon_slot(event):
 			_equip_weapon_slot(_weapon_slot_from_event(event))
 		elif not run_finished and intro_lock_timer <= 0.0 and InputBus.wants_reload(event):
-			var now_sec := Time.get_ticks_msec() / 1000.0
-			var is_double_tap := (now_sec - _last_reload_press_time) < 0.28
+			var now_sec: float = Time.get_ticks_msec() / 1000.0
+			var is_double_tap: bool = (now_sec - _last_reload_press_time) < 0.28
 			_last_reload_press_time = now_sec
 			if is_double_tap and weapon.current_ammo > 0 and not weapon.is_reloading:
 				if weapon.panic_reload():
