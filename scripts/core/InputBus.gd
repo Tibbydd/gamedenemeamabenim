@@ -67,7 +67,7 @@ func wants_shove(event: InputEvent) -> bool:
 	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F
 
 func wants_role_ability(event: InputEvent) -> bool:
-	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F
+	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_Q
 
 func wants_restart(event: InputEvent) -> bool:
 	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_R

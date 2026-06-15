@@ -661,7 +661,7 @@ func _update_condition_sparks(delta: float) -> void:
 		tween.tween_callback(spark_light.queue_free)
 		GameEvents.request_sound("footstep_metal", muzzle.global_position, 1.4)
 	# At near-failure condition: jitter the weapon
-	if weapon_condition < 0.10 and owner_body and owner_body.has_signal("weapon_recoil_requested"):
+	if weapon_condition < 0.10 and owner_body:
 		var jitter_pitch := randf_range(-0.04, 0.04)
 		var jitter_yaw := randf_range(-0.04, 0.04)
 		recoil_requested.emit(jitter_pitch, jitter_yaw, 0.0)

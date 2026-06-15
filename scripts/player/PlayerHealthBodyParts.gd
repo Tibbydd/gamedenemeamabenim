@@ -328,3 +328,11 @@ func get_status_lines() -> Array[String]:
 	if burn_time > 0.0:
 		lines.append("BURNING %.0fs" % burn_time)
 	return lines
+
+func total_health_ratio() -> float:
+	var total_current := 0.0
+	var total_max := 0.0
+	for part_name in parts.keys():
+		total_current += float(parts[part_name]["current"])
+		total_max += float(parts[part_name]["max"])
+	return clamp(total_current / max(1.0, total_max), 0.0, 1.0)
