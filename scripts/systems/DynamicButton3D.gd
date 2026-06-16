@@ -27,7 +27,7 @@ func configure(new_button_id: String, size: Vector3 = Vector3(0.7, 0.28, 0.18)) 
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	mesh_instance.mesh = mesh
-	mesh_instance.material_override = _make_material(inactive_color, 0.1)
+	mesh_instance.material_override = EffectMaterialCache.get_material(inactive_color, 0.1)
 	add_child(mesh_instance)
 
 func receive_generic_hit(damage: float, _hit_position: Vector3, _hit_direction: Vector3) -> void:
@@ -63,10 +63,9 @@ func _set_active(new_active: bool, reason: String) -> void:
 	active = new_active
 	if mesh_instance:
 		var color: Color = active_color if active else inactive_color
-		mesh_instance.material_override = _make_material(color, 0.7 if active else 0.1)
+		mesh_instance.material_override = EffectMaterialCache.get_material(color, 0.7 if active else 0.1)
 	activated.emit(button_id)
 	GameEvents.request_sound("button", global_position, 0.8)
 	GameEvents.emit_environment_impulse(global_position, 1.2, 2.0, self, "button_" + reason)
 
-func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	return EffectMaterialCache.get_material(color, emission_energy)
+

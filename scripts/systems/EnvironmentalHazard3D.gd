@@ -95,7 +95,7 @@ func _build_body(size: Vector3, color: Color) -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	mesh_instance.mesh = mesh
-	mesh_instance.material_override = _make_material(color, 0.22)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, 0.22)
 	add_child(mesh_instance)
 
 func _update_visual_active() -> void:
@@ -112,7 +112,6 @@ func _update_visual_active() -> void:
 		color = Color(0.9, 0.1, 0.08)
 	elif hazard_type == "coolant":
 		color = Color(0.35, 0.95, 0.85)
-	mesh_instance.material_override = _make_material(color, 0.85)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, 0.85)
 
-func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	return EffectMaterialCache.get_material(color, emission_energy)
+

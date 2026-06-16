@@ -44,7 +44,7 @@ func _add_box_mesh(mesh_name: String, size: Vector3, position: Vector3, color: C
 	new_mesh_instance.mesh = mesh
 	new_mesh_instance.position = position
 	new_mesh_instance.rotation_degrees = rotation_degrees_value
-	new_mesh_instance.material_override = _make_material(color, emission_energy)
+	new_mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(new_mesh_instance)
 	return new_mesh_instance
 
@@ -59,7 +59,7 @@ func _add_cylinder_mesh(mesh_name: String, radius: float, height: float, positio
 	new_mesh_instance.mesh = mesh
 	new_mesh_instance.position = position
 	new_mesh_instance.rotation_degrees = rotation_degrees_value
-	new_mesh_instance.material_override = _make_material(color, emission_energy)
+	new_mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(new_mesh_instance)
 	return new_mesh_instance
 
@@ -73,7 +73,7 @@ func _add_sphere_mesh(mesh_name: String, radius: float, position: Vector3, color
 	mesh.rings = 8
 	new_mesh_instance.mesh = mesh
 	new_mesh_instance.position = position
-	new_mesh_instance.material_override = _make_material(color, emission_energy)
+	new_mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(new_mesh_instance)
 	return new_mesh_instance
 
@@ -125,6 +125,3 @@ func _on_body_entered(body: Node) -> void:
 		return
 	if body.has_method("activate_from_physics"):
 		body.activate_from_physics(self, speed)
-
-func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	return EffectMaterialCache.get_material(color, emission_energy)

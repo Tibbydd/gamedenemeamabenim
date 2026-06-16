@@ -396,7 +396,6 @@ func _spawn_hit_particles(hit_position: Vector3, damage: float) -> void:
 	particles.explosiveness = 0.92
 	particles.amount = int(clamp(damage / 6.0, 4, 18))
 	particles.lifetime = 0.55
-	particles.emit_flags = CPUParticles3D.EMIT_FLAG_POSITION | CPUParticles3D.EMIT_FLAG_VELOCITY | CPUParticles3D.EMIT_FLAG_COLOR
 	particles.direction = Vector3(0, 1, 0)
 	particles.spread = 55.0
 	particles.gravity = Vector3(0, -9.8, 0)
@@ -659,7 +658,7 @@ func _add_visual_box(mesh_name: String, size: Vector3, position: Vector3, color:
 	mesh_instance.mesh = mesh
 	mesh_instance.position = position
 	mesh_instance.rotation_degrees = rotation_degrees_value
-	mesh_instance.material_override = _make_material(color, emission_energy)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(mesh_instance)
 	return mesh_instance
 
@@ -674,7 +673,7 @@ func _add_visual_capsule(mesh_name: String, radius: float, height: float, positi
 	mesh_instance.mesh = mesh
 	mesh_instance.position = position
 	mesh_instance.rotation_degrees = rotation_degrees_value
-	mesh_instance.material_override = _make_material(color, emission_energy)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(mesh_instance)
 	return mesh_instance
 
@@ -688,7 +687,7 @@ func _add_visual_sphere(mesh_name: String, radius: float, position: Vector3, col
 	mesh.rings = 9
 	mesh_instance.mesh = mesh
 	mesh_instance.position = position
-	mesh_instance.material_override = _make_material(color, emission_energy)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(mesh_instance)
 	return mesh_instance
 
@@ -703,7 +702,7 @@ func _add_visual_cylinder(mesh_name: String, radius: float, height: float, posit
 	mesh_instance.mesh = mesh
 	mesh_instance.position = position
 	mesh_instance.rotation_degrees = rotation_degrees_value
-	mesh_instance.material_override = _make_material(color, emission_energy)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(mesh_instance)
 	return mesh_instance
 
@@ -751,9 +750,6 @@ func _kick_nearby_dropped_weapons() -> void:
 		var pickup_body := pickup as RigidBody3D
 		pickup_body.apply_central_impulse(direction.normalized() * 3.5 + Vector3.UP * 0.6)
 		GameEvents.request_sound("mag_drop", pickup_node.global_position, 0.35)
-
-func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	return EffectMaterialCache.get_material(color, emission_energy)
 
 func _spawn_death_particles() -> void:
 	var scene := get_tree().current_scene

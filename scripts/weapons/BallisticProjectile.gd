@@ -107,7 +107,7 @@ func _impact_collider(collider: Object) -> void:
 			return
 	GameEvents.emit_environment_impulse(global_position, 0.95, max(2.0, damage * 0.22), source_body, "bullet_impact")
 	# Material-specific visual + audio impact
-	var is_flesh := collider.is_in_group("enemies") or collider.has_method("apply_hit")
+	var is_flesh: bool = collider.is_in_group("enemies") or collider.has_method("apply_hit")
 	if is_flesh:
 		_spawn_flesh_impact(global_position, velocity.normalized())
 	else:
@@ -250,9 +250,9 @@ func _try_spawn_ricochet() -> void:
 	var hit := space.intersect_ray(query)
 	if hit.is_empty():
 		return
-	var normal := Vector3(hit.get("normal"))
+	var normal: Vector3 = hit["normal"]
 	# Only ricochet at glancing angles (bullet nearly parallel to surface)
-	var cos_incidence := abs(velocity.normalized().dot(normal))
+	var cos_incidence: float = abs(velocity.normalized().dot(normal))
 	if cos_incidence > 0.42:  # > ~25° incidence — too steep to ricochet
 		return
 	var reflect_dir := velocity.normalized().bounce(normal)

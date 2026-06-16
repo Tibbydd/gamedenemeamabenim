@@ -81,9 +81,6 @@ func use(actor: Node) -> void:
 		actor.show_diegetic_notice("%s acknowledges you." % role_label, 2.0)
 	GameEvents.request_sound("interact", global_position, 0.6)
 
-func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	return EffectMaterialCache.get_material(color, emission_energy)
-
 func _add_box(mesh_name: String, size: Vector3, position: Vector3, color: Color, emission_energy: float = 0.0, rotation_degrees_value: Vector3 = Vector3.ZERO) -> MeshInstance3D:
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.name = mesh_name
@@ -92,7 +89,7 @@ func _add_box(mesh_name: String, size: Vector3, position: Vector3, color: Color,
 	mesh_instance.mesh = mesh
 	mesh_instance.position = position
 	mesh_instance.rotation_degrees = rotation_degrees_value
-	mesh_instance.material_override = _make_material(color, emission_energy)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(mesh_instance)
 	return mesh_instance
 
@@ -107,7 +104,7 @@ func _add_capsule(mesh_name: String, radius: float, height: float, position: Vec
 	mesh_instance.mesh = mesh
 	mesh_instance.position = position
 	mesh_instance.rotation_degrees = rotation_degrees_value
-	mesh_instance.material_override = _make_material(color, emission_energy)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(mesh_instance)
 	return mesh_instance
 
@@ -121,6 +118,6 @@ func _add_sphere(mesh_name: String, radius: float, position: Vector3, color: Col
 	mesh.rings = 8
 	mesh_instance.mesh = mesh
 	mesh_instance.position = position
-	mesh_instance.material_override = _make_material(color, emission_energy)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(mesh_instance)
 	return mesh_instance

@@ -62,12 +62,11 @@ func _build_body() -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = Vector3(0.74, 0.46, 0.18)
 	mesh_instance.mesh = mesh
-	mesh_instance.material_override = _make_material(Color(0.12, 0.2, 0.22), 0.12)
+	mesh_instance.material_override = EffectMaterialCache.get_material(Color(0.12, 0.2, 0.22), 0.12)
 	add_child(mesh_instance)
 
 func _update_visual(active: bool) -> void:
 	if mesh_instance:
-		mesh_instance.material_override = _make_material(Color(0.16, 0.8, 0.52) if active else Color(0.12, 0.2, 0.22), 0.55 if active else 0.12)
+		mesh_instance.material_override = EffectMaterialCache.get_material(Color(0.16, 0.8, 0.52) if active else Color(0.12, 0.2, 0.22), 0.55 if active else 0.12)
 
-func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	return EffectMaterialCache.get_material(color, emission_energy)
+

@@ -13,7 +13,7 @@ var briefing_screen: MissionBriefingScreen
 var enemy_container: Node3D
 var arena_root: Node3D
 var navigation_region: NavigationRegion3D
-var nav_blockers: Array[Dictionary] = []
+var _csg_world: CSGCombiner3D
 var sector_lights: Dictionary = {}
 var emergency_lights_by_sector: Dictionary = {}
 var world_environment: WorldEnvironment
@@ -180,18 +180,28 @@ func _build_lighting() -> void:
 	add_child(fill)
 
 func _build_arena() -> void:
-	arena_root = Node3D.new()
-	arena_root.name = "GreyboxRuinedFacility"
-	add_child(arena_root)
+	var prebuilt := get_node_or_null("StationGeometry") as StationGeometryBuilder
+	if prebuilt and prebuilt.get_child_count() > 0:
+		arena_root = prebuilt
+		_csg_world = prebuilt.get_csg_world()
+	else:
+		arena_root = Node3D.new()
+		arena_root.name = "GreyboxRuinedFacility"
+		add_child(arena_root)
+		_csg_world = CSGCombiner3D.new()
+		_csg_world.name = "StaticWorld"
+		_csg_world.use_collision = true
+		_csg_world.collision_layer = 1
+		_csg_world.collision_mask = 0
+		arena_root.add_child(_csg_world)
+		_build_exterior()
+		_build_outer_hull()
+		_build_room_shell_geometry()
+		_build_wall_detail_pass()
 	enemy_container = Node3D.new()
 	enemy_container.name = "Enemies"
 	add_child(enemy_container)
-	_build_exterior()
-	_build_outer_hull()
-	nav_blockers.clear()
-	_build_room_shell_geometry()
 	_build_room_props()
-	_build_wall_detail_pass()
 	var cover_specs: Array[Dictionary] = [
 		{"position": Vector3(-8, 0.75, -5), "size": Vector3(5, 1.5, 1.2)},
 		{"position": Vector3(8, 0.75, 4), "size": Vector3(5, 1.5, 1.2)},
@@ -204,7 +214,6 @@ func _build_arena() -> void:
 		var cover_position: Vector3 = _dict_vector3(spec, "position", Vector3.ZERO)
 		var cover_size: Vector3 = _dict_vector3(spec, "size", Vector3.ONE)
 		_create_box("RuinCover", cover_position, cover_size, Color(0.22, 0.23, 0.24), true)
-		_register_nav_blocker(cover_position, cover_size)
 	for point in [
 		# F0 — arrival / cargo / utilities / power (inside verified rooms)
 		Vector3(  0.0, 0.05, -21.5),  # SecurityCheck
@@ -240,57 +249,32 @@ func _build_arena() -> void:
 	_build_survivor_entry_scenarios()
 	_build_hidden_route_markers()
 	_build_dynamic_environment_props()
-	_build_interior_partitions()
+	_build_mission_doors()
 	_build_vent_markers()
 	_build_npc_survivors()
 	_build_steam_vents()
 	_build_reverb_zones()
 	_spawn_death_memorials()
 	ambient_event_timer = randf_range(6.0, 12.0)
-
-func _register_nav_blocker(world_position: Vector3, size: Vector3) -> void:
-	nav_blockers.append({
-		"min_x": world_position.x - size.x * 0.5,
-		"max_x": world_position.x + size.x * 0.5,
-		"min_z": world_position.z - size.z * 0.5,
-		"max_z": world_position.z + size.z * 0.5
-	})
+	call_deferred("_build_navigation_region")
 
 func _build_navigation_region() -> void:
 	if navigation_region and is_instance_valid(navigation_region):
 		navigation_region.queue_free()
 	navigation_region = NavigationRegion3D.new()
 	navigation_region.name = "ArenaNavigationRegion"
-	var nav_mesh = NavigationMesh.new()
-	var vertices: Array = []
-	var vertex_lookup: Dictionary = {}
-	var polygons: Array = []
-	var cell_size = 2.0
-	var min_coord = -46.0
-	var cell_count = 46
-	for x_index in range(cell_count):
-		for z_index in range(cell_count):
-			var min_x = min_coord + float(x_index) * cell_size
-			var min_z = min_coord + float(z_index) * cell_size
-			var max_x = min_x + cell_size
-			var max_z = min_z + cell_size
-			if _nav_cell_blocked(min_x, max_x, min_z, max_z):
-				continue
-			var polygon = PackedInt32Array([
-				_get_nav_vertex(vertices, vertex_lookup, Vector3(min_x, 0.0, min_z)),
-				_get_nav_vertex(vertices, vertex_lookup, Vector3(max_x, 0.0, min_z)),
-				_get_nav_vertex(vertices, vertex_lookup, Vector3(max_x, 0.0, max_z)),
-				_get_nav_vertex(vertices, vertex_lookup, Vector3(min_x, 0.0, max_z))
-			])
-			polygons.append(polygon)
-	var packed_vertices = PackedVector3Array()
-	for vertex in vertices:
-		packed_vertices.append(vertex)
-	nav_mesh.set_vertices(packed_vertices)
-	for polygon in polygons:
-		nav_mesh.add_polygon(polygon)
+	var nav_mesh := NavigationMesh.new()
+	nav_mesh.agent_height = 1.8
+	nav_mesh.agent_radius = 0.4
+	nav_mesh.agent_max_climb = 0.35
+	nav_mesh.agent_max_slope = 45.0
+	nav_mesh.cell_size = 0.25
+	nav_mesh.cell_height = 0.25
+	nav_mesh.geometry_parsed_geometry_type = NavigationMesh.PARSED_GEOMETRY_STATIC_COLLIDERS
+	nav_mesh.geometry_source_geometry_mode = NavigationMesh.SOURCE_GEOMETRY_ROOT_NODE_CHILDREN
 	navigation_region.navigation_mesh = nav_mesh
 	arena_root.add_child(navigation_region)
+	navigation_region.bake_navigation_mesh(true)
 
 func _on_facility_door_state_changed(_door_id: String, _state: String) -> void:
 	if not arena_root:
@@ -309,28 +293,7 @@ func _reveal_routes_near_sealed_room(door_id: String) -> void:
 			facility_state.mark_route_discovered(String(route_id))
 			facility_state.unlock_flag("route_revealed_by_%s" % door_id)
 
-func _get_nav_vertex(vertices: Array, vertex_lookup: Dictionary, point: Vector3) -> int:
-	var key = "%d:%d" % [roundi(point.x * 10.0), roundi(point.z * 10.0)]
-	if vertex_lookup.has(key):
-		return int(vertex_lookup[key])
-	var index = vertices.size()
-	vertices.append(point)
-	vertex_lookup[key] = index
-	return index
 
-func _nav_cell_blocked(min_x: float, max_x: float, min_z: float, max_z: float) -> bool:
-	var clearance = 0.7
-	for blocker in nav_blockers:
-		var block_min_x = float(blocker["min_x"]) - clearance
-		var block_max_x = float(blocker["max_x"]) + clearance
-		var block_min_z = float(blocker["min_z"]) - clearance
-		var block_max_z = float(blocker["max_z"]) + clearance
-		if max_x <= block_min_x or min_x >= block_max_x:
-			continue
-		if max_z <= block_min_z or min_z >= block_max_z:
-			continue
-		return true
-	return false
 
 func _build_room_shell_geometry() -> void:
 	for spec in _get_station_room_specs():
@@ -383,13 +346,6 @@ func _build_terminal_room_boundary_walls() -> void:
 
 func _create_structural_wall(wall_name: String, world_position: Vector3, size: Vector3) -> void:
 	_create_box(wall_name, world_position, size, Color(0.12, 0.145, 0.158), true, "bulkhead")
-	if _blocker_intersects_ground_nav(world_position, size):
-		_register_nav_blocker(world_position, size)
-
-func _blocker_intersects_ground_nav(world_position: Vector3, size: Vector3) -> bool:
-	var min_y: float = world_position.y - size.y * 0.5
-	var max_y: float = world_position.y + size.y * 0.5
-	return min_y <= 0.35 and max_y >= -0.35
 
 func _get_station_room_specs() -> Array[Dictionary]:
 	# Astra Relay Station K-17 — four floors, each 3.0m ceiling, 4.2m floor separation
@@ -728,8 +684,6 @@ func _build_room_props() -> void:
 
 func _place_prop(prop_name: String, position: Vector3, size: Vector3, color: Color, surface: String = "metal") -> void:
 	_create_box(prop_name, position, size, color, true, surface)
-	if _blocker_intersects_ground_nav(position, size):
-		_register_nav_blocker(position, size)
 
 func _build_props_f0_arrival(fy: float) -> void:
 	var y := fy + 0.001
@@ -1540,7 +1494,7 @@ func _apply_access_state_visual(access_node: Node3D, state: String) -> void:
 		emission = 0.7
 	for child in access_node.get_children():
 		if child is MeshInstance3D:
-			child.material_override = _make_material(color, emission)
+			child.material_override = EffectMaterialCache.get_material(color, emission)
 
 func _make_spawn_text(room_id: String, definition: Dictionary, access_state: String, was_explored: bool, entry_reason: String) -> String:
 	var familiarity = "known access" if was_explored else "unmapped access"
@@ -1761,97 +1715,15 @@ func _get_mission_sector_definitions() -> Array[Dictionary]:
 		{"sector_id": "f3_reactor",    "label": "Reactor Control",     "position": Vector3( 22.0, 12.65,  -6.0)},
 	]
 
-func _build_interior_partitions() -> void:
-	_build_mission_doors()
-	_build_navigation_region()
-	return
-	var wall_specs: Array[Dictionary] = [
-		{"name": "NorthSpineWestWallA", "position": Vector3(-5.2, 1.85, -29.0), "size": Vector3(0.42, 3.45, 9.5)},
-		{"name": "NorthSpineWestWallB", "position": Vector3(-5.2, 1.85, -14.0), "size": Vector3(0.42, 3.45, 6.0)},
-		{"name": "SouthSpineWestWallA", "position": Vector3(-5.2, 1.85, 14.0), "size": Vector3(0.42, 3.45, 6.0)},
-		{"name": "SouthSpineWestWallB", "position": Vector3(-5.2, 1.85, 29.0), "size": Vector3(0.42, 3.45, 9.5)},
-		{"name": "NorthSpineEastWallA", "position": Vector3(5.2, 1.85, -29.0), "size": Vector3(0.42, 3.45, 9.5)},
-		{"name": "NorthSpineEastWallB", "position": Vector3(5.2, 1.85, -14.0), "size": Vector3(0.42, 3.45, 6.0)},
-		{"name": "SouthSpineEastWallA", "position": Vector3(5.2, 1.85, 14.0), "size": Vector3(0.42, 3.45, 6.0)},
-		{"name": "SouthSpineEastWallB", "position": Vector3(5.2, 1.85, 29.0), "size": Vector3(0.42, 3.45, 9.5)},
-		{"name": "WestCrossNorthWallA", "position": Vector3(-29.0, 1.85, -5.2), "size": Vector3(9.5, 3.45, 0.42)},
-		{"name": "WestCrossNorthWallB", "position": Vector3(-14.0, 1.85, -5.2), "size": Vector3(6.0, 3.45, 0.42)},
-		{"name": "EastCrossNorthWallA", "position": Vector3(14.0, 1.85, -5.2), "size": Vector3(6.0, 3.45, 0.42)},
-		{"name": "EastCrossNorthWallB", "position": Vector3(29.0, 1.85, -5.2), "size": Vector3(9.5, 3.45, 0.42)},
-		{"name": "WestCrossSouthWallA", "position": Vector3(-29.0, 1.85, 5.2), "size": Vector3(9.5, 3.45, 0.42)},
-		{"name": "WestCrossSouthWallB", "position": Vector3(-14.0, 1.85, 5.2), "size": Vector3(6.0, 3.45, 0.42)},
-		{"name": "EastCrossSouthWallA", "position": Vector3(14.0, 1.85, 5.2), "size": Vector3(6.0, 3.45, 0.42)},
-		{"name": "EastCrossSouthWallB", "position": Vector3(29.0, 1.85, 5.2), "size": Vector3(9.5, 3.45, 0.42)},
-		{"name": "MedBayPartition", "position": Vector3(-23.0, 1.55, -18.0), "size": Vector3(12.0, 3.0, 0.36)},
-		{"name": "CargoPartition", "position": Vector3(23.0, 1.55, 18.0), "size": Vector3(12.0, 3.0, 0.36)},
-		{"name": "ReactorPartition", "position": Vector3(18.0, 1.55, -23.0), "size": Vector3(0.36, 3.0, 12.0)},
-		{"name": "HabPartition", "position": Vector3(-18.0, 1.55, 23.0), "size": Vector3(0.36, 3.0, 12.0)}
-	]
-	for spec in wall_specs:
-		var partition_position: Vector3 = Vector3.ZERO
-		var raw_partition_position: Variant = spec.get("position", Vector3.ZERO)
-		if raw_partition_position is Vector3:
-			partition_position = raw_partition_position
-		var partition_size: Vector3 = Vector3.ONE
-		var raw_partition_size: Variant = spec.get("size", Vector3.ONE)
-		if raw_partition_size is Vector3:
-			partition_size = raw_partition_size
-		_create_box(String(spec["name"]), partition_position, partition_size, Color(0.135, 0.155, 0.17), true, "bulkhead")
-		_register_nav_blocker(partition_position, partition_size)
-	var door_specs: Array[Dictionary] = [
-		{"name": "MedBayDoorWest", "position": Vector3(-5.22, 0.0, -22.0), "along_x": false, "color": Color(0.16, 0.35, 0.33)},
-		{"name": "StorageDoorWest", "position": Vector3(-5.22, 0.0, 22.0), "along_x": false, "color": Color(0.32, 0.28, 0.16)},
-		{"name": "ReactorDoorEast", "position": Vector3(5.22, 0.0, -22.0), "along_x": false, "color": Color(0.35, 0.18, 0.12)},
-		{"name": "HabDoorEast", "position": Vector3(5.22, 0.0, 22.0), "along_x": false, "color": Color(0.18, 0.26, 0.36)},
-		{"name": "SecurityDoorNorth", "position": Vector3(-22.0, 0.0, -5.22), "along_x": true, "color": Color(0.18, 0.28, 0.34)},
-		{"name": "UtilityDoorNorth", "position": Vector3(22.0, 0.0, -5.22), "along_x": true, "color": Color(0.28, 0.2, 0.13)},
-		{"name": "LabDoorSouth", "position": Vector3(-22.0, 0.0, 5.22), "along_x": true, "color": Color(0.14, 0.32, 0.34)},
-		{"name": "CommonsDoorSouth", "position": Vector3(22.0, 0.0, 5.22), "along_x": true, "color": Color(0.2, 0.24, 0.16)}
-	]
-	for door_spec in door_specs:
-		var doorway_position: Vector3 = Vector3.ZERO
-		var raw_doorway_position: Variant = door_spec.get("position", Vector3.ZERO)
-		if raw_doorway_position is Vector3:
-			doorway_position = raw_doorway_position
-		var doorway_color: Color = Color(0.18, 0.26, 0.28)
-		var raw_doorway_color: Variant = door_spec.get("color", doorway_color)
-		if raw_doorway_color is Color:
-			doorway_color = raw_doorway_color
-		_create_station_doorway(
-			String(door_spec["name"]),
-			doorway_position,
-			bool(door_spec["along_x"]),
-			doorway_color
-		)
-	_build_mission_doors()
-	_create_box("CentralCeilingRibNorth", Vector3(0.0, 3.85, -16.0), Vector3(9.8, 0.18, 0.32), Color(0.045, 0.055, 0.062), false)
-	_create_box("CentralCeilingRibSouth", Vector3(0.0, 3.85, 16.0), Vector3(9.8, 0.18, 0.32), Color(0.045, 0.055, 0.062), false)
-	_create_box("CrossCeilingRibWest", Vector3(-16.0, 3.85, 0.0), Vector3(0.32, 0.18, 9.8), Color(0.045, 0.055, 0.062), false)
-	_create_box("CrossCeilingRibEast", Vector3(16.0, 3.85, 0.0), Vector3(0.32, 0.18, 9.8), Color(0.045, 0.055, 0.062), false)
-	_build_navigation_region()
-
-func _create_station_doorway(doorway_name: String, floor_position: Vector3, along_x: bool, color: Color) -> void:
-	var base_position: Vector3 = floor_position + Vector3(0.0, 1.25, 0.0)
-	if along_x:
-		_create_box(doorway_name + "_FrameLeft", base_position + Vector3(-1.35, 0.0, 0.0), Vector3(0.16, 2.55, 0.28), Color(0.055, 0.07, 0.075), false)
-		_create_box(doorway_name + "_FrameRight", base_position + Vector3(1.35, 0.0, 0.0), Vector3(0.16, 2.55, 0.28), Color(0.055, 0.07, 0.075), false)
-		_create_box(doorway_name + "_Header", base_position + Vector3(0.0, 1.25, 0.0), Vector3(2.85, 0.18, 0.32), Color(0.055, 0.07, 0.075), false)
-		_create_box(doorway_name + "_OpenPanel", base_position + Vector3(1.95, -0.08, 0.0), Vector3(0.9, 2.22, 0.16), color, false)
-	else:
-		_create_box(doorway_name + "_FrameLeft", base_position + Vector3(0.0, 0.0, -1.35), Vector3(0.28, 2.55, 0.16), Color(0.055, 0.07, 0.075), false)
-		_create_box(doorway_name + "_FrameRight", base_position + Vector3(0.0, 0.0, 1.35), Vector3(0.28, 2.55, 0.16), Color(0.055, 0.07, 0.075), false)
-		_create_box(doorway_name + "_Header", base_position + Vector3(0.0, 1.25, 0.0), Vector3(0.32, 0.18, 2.85), Color(0.055, 0.07, 0.075), false)
-		_create_box(doorway_name + "_OpenPanel", base_position + Vector3(0.0, -0.08, 1.95), Vector3(0.16, 2.22, 0.9), color, false)
-
 func _build_mission_doors() -> void:
 	mission_doors_by_sector.clear()
 	var door_specs: Array[Dictionary] = [
-		{"door_id": "door_medical_wing", "sector_id": "medical_wing", "name": "MissionDoorMedicalWing", "position": Vector3(-16.0, 1.22, -20.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.14, 0.22, 0.25)},
-		{"door_id": "door_armory", "sector_id": "armory", "name": "MissionDoorArmory", "position": Vector3(19.0, 1.22, -22.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.2, 0.14, 0.11)},
-		{"door_id": "door_lab_alpha", "sector_id": "lab_alpha", "name": "MissionDoorLabAlpha", "position": Vector3(-16.0, 1.22, -2.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.1, 0.22, 0.24)},
-		{"door_id": "door_engineering", "sector_id": "engineering", "name": "MissionDoorEngineering", "position": Vector3(18.0, 1.22, 10.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.2, 0.18, 0.12)},
-		{"door_id": "door_command", "sector_id": "command", "name": "MissionDoorCommand", "position": Vector3(20.55, 4.82, -14.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.12, 0.2, 0.25)},
-		{"door_id": "door_archives", "sector_id": "archives", "name": "MissionDoorArchives", "position": Vector3(-8.5, 4.82, -20.0), "size": Vector3(0.3, 2.45, 1.0), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.6, 1.15), "color": Color(0.14, 0.18, 0.24)}
+		{"door_id": "door_medical_wing", "sector_id": "medical_wing", "name": "MissionDoorMedicalWing", "position": Vector3(-4.0, 5.3, -6.0), "size": Vector3(2.4, 2.2, 0.28), "glow_offset": Vector3(0.0, 0.0, 0.02), "glow_size": Vector3(2.5, 2.4, 0.04), "color": Color(0.14, 0.22, 0.25)},
+		{"door_id": "door_armory", "sector_id": "armory", "name": "MissionDoorArmory", "position": Vector3(3.0, 1.1, -3.0), "size": Vector3(0.28, 2.2, 2.4), "glow_offset": Vector3(-0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.4, 2.5), "color": Color(0.2, 0.14, 0.11)},
+		{"door_id": "door_lab_alpha", "sector_id": "lab_alpha", "name": "MissionDoorLabAlpha", "position": Vector3(-18.0, 9.5, -6.0), "size": Vector3(2.4, 2.2, 0.28), "glow_offset": Vector3(0.0, 0.0, 0.02), "glow_size": Vector3(2.5, 2.4, 0.04), "color": Color(0.1, 0.22, 0.24)},
+		{"door_id": "door_engineering", "sector_id": "engineering", "name": "MissionDoorEngineering", "position": Vector3(0.0, 1.1, 0.0), "size": Vector3(2.4, 2.2, 0.28), "glow_offset": Vector3(0.0, 0.0, -0.02), "glow_size": Vector3(2.5, 2.4, 0.04), "color": Color(0.2, 0.18, 0.12)},
+		{"door_id": "door_command", "sector_id": "command", "name": "MissionDoorCommand", "position": Vector3(-4.0, 13.7, -6.0), "size": Vector3(2.4, 2.2, 0.28), "glow_offset": Vector3(0.0, 0.0, 0.02), "glow_size": Vector3(2.5, 2.4, 0.04), "color": Color(0.12, 0.2, 0.25)},
+		{"door_id": "door_archives", "sector_id": "archives", "name": "MissionDoorArchives", "position": Vector3(-3.0, 1.1, -3.0), "size": Vector3(0.28, 2.2, 2.4), "glow_offset": Vector3(0.02, 0.0, 0.0), "glow_size": Vector3(0.04, 2.4, 2.5), "color": Color(0.14, 0.18, 0.24)}
 	]
 	for spec in door_specs:
 		var door_id: String = String(spec.get("door_id", "mission_door"))
@@ -1960,30 +1832,39 @@ func _create_reactor_glow(world_position: Vector3) -> void:
 	arena_root.add_child(glow_node)
 
 func _create_box(box_name: String, world_position: Vector3, size: Vector3, color: Color, collision: bool, surface_id: String = "metal") -> Node3D:
+	var is_structural: bool = surface_id in ["deck", "ceiling", "bulkhead", "structural"] or \
+		box_name.find("Wall") >= 0 or box_name.find("Ceiling") >= 0 or \
+		box_name.find("Partition") >= 0 or box_name.find("Frame") >= 0 or box_name == "Floor"
+	# Structural collision geometry goes into the CSG combiner — one merged mesh + one body
+	if collision and is_structural and _csg_world:
+		var csg := CSGBox3D.new()
+		csg.name = box_name
+		csg.size = size
+		csg.position = world_position
+		csg.material = EffectMaterialCache.get_material(color, 0.0)
+		_csg_world.add_child(csg)
+		return csg
+	# Breakable props and decorative objects stay as individual nodes
 	var root: Node3D
 	if collision:
-		var static_body = ReactiveStaticBody3D.new()
+		var static_body := ReactiveStaticBody3D.new()
 		static_body.collision_layer = 1
 		static_body.collision_mask = 0
-		var is_structural: bool = surface_id == "deck" or surface_id == "ceiling" or surface_id == "bulkhead" or surface_id == "structural" or box_name.find("Wall") >= 0 or box_name.find("Ceiling") >= 0 or box_name.find("Partition") >= 0 or box_name.find("Frame") >= 0 or box_name == "Floor"
-		var integrity: float = 120.0
-		if is_structural:
-			integrity = 99999.0
-		static_body.configure_reactivity(surface_id, not is_structural, integrity, not is_structural)
+		static_body.configure_reactivity(surface_id, true, 120.0, true)
 		root = static_body
 	else:
 		root = Node3D.new()
 	root.name = box_name
 	root.position = world_position
-	var mesh_instance = MeshInstance3D.new()
-	var box_mesh = BoxMesh.new()
+	var mesh_instance := MeshInstance3D.new()
+	var box_mesh := BoxMesh.new()
 	box_mesh.size = size
 	mesh_instance.mesh = box_mesh
-	mesh_instance.material_override = _make_material(color, 0.0)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, 0.0)
 	root.add_child(mesh_instance)
 	if collision:
-		var collision_shape = CollisionShape3D.new()
-		var box_shape = BoxShape3D.new()
+		var collision_shape := CollisionShape3D.new()
+		var box_shape := BoxShape3D.new()
 		box_shape.size = size
 		collision_shape.shape = box_shape
 		root.add_child(collision_shape)
@@ -1998,9 +1879,6 @@ func _create_facility_door(door_id: String, door_name: String, world_position: V
 	door.door_forced_open.connect(_on_facility_door_forced_open)
 	arena_root.add_child(door)
 	return door
-
-func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	return EffectMaterialCache.get_material(color, emission_energy)
 
 func _on_dynamic_button_activated(button_id: String) -> void:
 	var button = arena_root.get_node_or_null(button_id)

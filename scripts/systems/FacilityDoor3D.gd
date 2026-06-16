@@ -71,6 +71,14 @@ func activate_from_physics(body: Node, impact_speed: float) -> void:
 	var multiplier: float = 1.15 if body and body.is_in_group("heavy_pry_objects") else 1.0
 	_stress_door(float(mass_value) * impact_speed * 0.55 * multiplier, "thrown_object")
 
+func get_display_name() -> String:
+	match state:
+		FacilityProgression.DOOR_OPEN:   return ""
+		FacilityProgression.DOOR_SEALED: return "SEALED — needs breach"
+		FacilityProgression.DOOR_LOCKED: return "[E] Force door  (%d%%)" % int(force_work / 1.05)
+		FacilityProgression.DOOR_JAMMED: return "[E] Pry door  (%d%%)" % int(force_work / 0.70)
+		_: return "[E] Open door"
+
 func use(actor: Node) -> void:
 	if state == FacilityProgression.DOOR_OPEN:
 		return
@@ -110,7 +118,7 @@ func _build_body(size: Vector3, color: Color) -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = size
 	mesh_instance.mesh = mesh
-	mesh_instance.material_override = _make_material(color, 0.0)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, 0.0)
 	add_child(mesh_instance)
 	lock_housing = DoorLockHousing3D.new()
 	lock_housing.name = "LockHousing"
@@ -132,7 +140,7 @@ func _update_door_visual() -> void:
 	elif state == FacilityProgression.DOOR_SEALED:
 		color = Color(0.24, 0.05, 0.04)
 		emission = 0.65
-	mesh_instance.material_override = _make_material(color, emission)
+	mesh_instance.material_override = EffectMaterialCache.get_material(color, emission)
 
 func _spawn_unlock_flash() -> void:
 	var flash: OmniLight3D = OmniLight3D.new()
@@ -147,5 +155,3 @@ func _spawn_unlock_flash() -> void:
 	tween.tween_property(flash, "light_energy", 0.0, 0.6)
 	tween.tween_callback(Callable(flash, "queue_free"))
 
-func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	return EffectMaterialCache.get_material(color, emission_energy)

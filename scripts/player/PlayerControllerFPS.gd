@@ -1093,16 +1093,8 @@ func _update_debug_overlay() -> void:
 		health.bleed_rate if health else 0.0,
 		enemy_lines.size(),
 		weapon_debug,
-		_join_debug_lines(enemy_lines, 6)
+		"\n".join(enemy_lines.slice(0, 6))
 	]
-
-func _join_debug_lines(lines: Array[String], max_lines: int) -> String:
-	var text = ""
-	for index in range(min(lines.size(), max_lines)):
-		if not text.is_empty():
-			text += "\n"
-		text += lines[index]
-	return text
 
 func _update_weapon_obstruction(delta: float) -> void:
 	if not camera or not weapon_pivot:
@@ -2543,7 +2535,7 @@ func _update_velocity_lean(delta: float) -> void:
 	if not camera or hit_bob_timer > 0.0 or intro_lock_timer > 0.0:
 		return
 	var local_lat := (global_transform.basis.inverse() * Vector3(velocity.x, 0.0, velocity.z)).x
-	var lean := clamp(local_lat * 0.013, -0.048, 0.048)
+	var lean: float = clamp(local_lat * 0.013, -0.048, 0.048)
 	camera.rotation.z = lerp(camera.rotation.z, lean + shake_z_tilt, delta * 5.0)
 
 func _update_proximity_indicators(delta: float) -> void:
@@ -2555,8 +2547,8 @@ func _update_proximity_indicators(delta: float) -> void:
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		if not is_instance_valid(enemy):
 			continue
-		var to_e := enemy.global_position - global_position
-		var dist := to_e.length()
+		var to_e: Vector3 = (enemy as Node3D).global_position - global_position
+		var dist: float = to_e.length()
 		if dist > 8.0:
 			continue
 		# Skip if squarely in front of us (player can see it)
@@ -2590,8 +2582,8 @@ func _update_weapon_sway(delta: float) -> void:
 	var dpitch := pitch - _prev_pitch
 	_prev_yaw = yaw
 	_prev_pitch = pitch
-	var sway_x := clamp(-dyaw * 0.18, -0.06, 0.06)
-	var sway_y := clamp(-dpitch * 0.10, -0.04, 0.04)
+	var sway_x: float = clamp(-dyaw * 0.18, -0.06, 0.06)
+	var sway_y: float = clamp(-dpitch * 0.10, -0.04, 0.04)
 	_weapon_sway = _weapon_sway.lerp(Vector3(sway_x, sway_y, 0.0), delta * 8.0)
 	weapon_pivot.rotation.y = lerp(weapon_pivot.rotation.y, _weapon_sway.x, delta * 12.0)
 	weapon_pivot.rotation.x = lerp(weapon_pivot.rotation.x,
@@ -2609,7 +2601,7 @@ func _update_fall_tracking() -> void:
 	_was_on_floor = on_floor_now
 
 func _trigger_landing_impact(fall_dist: float) -> void:
-	var severity := clamp((fall_dist - 1.8) / 4.0, 0.0, 1.0)
+	var severity: float = clamp((fall_dist - 1.8) / 4.0, 0.0, 1.0)
 	hit_bob_timer = 0.28
 	hit_bob_duration = 0.28
 	hit_bob_strength = clamp(severity * 1.4, 0.3, 1.0)
@@ -2698,12 +2690,12 @@ func _update_adrenaline(delta: float) -> void:
 
 func _update_shepard_tension() -> void:
 	var nearest := _prev_nearest_enemy
-	var tension := clamp(1.0 - (nearest - 3.0) / 11.0, 0.0, 1.0)
-	var target_db := lerp(-80.0, -14.0, tension)
+	var tension: float = clamp(1.0 - (nearest - 3.0) / 11.0, 0.0, 1.0)
+	var target_db: float = lerp(-80.0, -14.0, tension)
 	AudioRouter.set_shepard_volume(target_db)
 
 func _trigger_kinetic_stagger(amount: float, part_name: String) -> void:
-	var severity := clamp(amount / 45.0, 0.0, 1.0)
+	var severity: float = clamp(amount / 45.0, 0.0, 1.0)
 	if severity < 0.18:
 		return
 	var side := 1.0 if (part_name == PlayerHealthBodyParts.PART_RIGHT_ARM or

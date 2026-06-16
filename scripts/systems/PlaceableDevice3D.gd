@@ -145,9 +145,6 @@ func _add_light(color: Color, energy: float, range_value: float) -> void:
 	light.omni_range = range_value
 	add_child(light)
 
-func _make_material(color: Color, emission_energy: float) -> StandardMaterial3D:
-	return EffectMaterialCache.get_material(color, emission_energy)
-
 func _add_box_mesh(mesh_name: String, size: Vector3, position: Vector3, color: Color, emission_energy: float = 0.0, rotation_degrees_value: Vector3 = Vector3.ZERO) -> MeshInstance3D:
 	var new_mesh_instance := MeshInstance3D.new()
 	new_mesh_instance.name = mesh_name
@@ -156,7 +153,7 @@ func _add_box_mesh(mesh_name: String, size: Vector3, position: Vector3, color: C
 	new_mesh_instance.mesh = mesh
 	new_mesh_instance.position = position
 	new_mesh_instance.rotation_degrees = rotation_degrees_value
-	new_mesh_instance.material_override = _make_material(color, emission_energy)
+	new_mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(new_mesh_instance)
 	return new_mesh_instance
 
@@ -171,6 +168,6 @@ func _add_cylinder_mesh(mesh_name: String, radius: float, height: float, positio
 	new_mesh_instance.mesh = mesh
 	new_mesh_instance.position = position
 	new_mesh_instance.rotation_degrees = rotation_degrees_value
-	new_mesh_instance.material_override = _make_material(color, emission_energy)
+	new_mesh_instance.material_override = EffectMaterialCache.get_material(color, emission_energy)
 	add_child(new_mesh_instance)
 	return new_mesh_instance
